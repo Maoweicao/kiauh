@@ -41,6 +41,7 @@ class InvalidValueError(Exception):
 @dataclass
 class AppSettings:
     backup_before_update: bool | None = field(default=None)
+    language: str | None = field(default=None)
 
 
 @dataclass
@@ -156,6 +157,13 @@ class KiauhSettings:
             "backup_before_update",
             self.config.getboolean,
             False,
+        )
+        # parse language option
+        self.kiauh.language = self.__read_from_cfg(
+            "kiauh",
+            "language",
+            self.config.getval,
+            "en_US",
         )
 
         # parse Klipper options
@@ -296,6 +304,12 @@ class KiauhSettings:
                 "kiauh",
                 "backup_before_update",
                 str(self.kiauh.backup_before_update),
+            )
+        if self.kiauh.language is not None:
+            self.config.set_option(
+                "kiauh",
+                "language",
+                str(self.kiauh.language),
             )
 
         # Handle repositories

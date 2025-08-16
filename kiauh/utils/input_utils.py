@@ -1,20 +1,9 @@
-# ======================================================================= #
-#  Copyright (C) 2020 - 2025 Dominik Willner <th33xitus@gmail.com>        #
-#                                                                         #
-#  This file is part of KIAUH - Klipper Installation And Update Helper    #
-#  https://github.com/dw-0/kiauh                                          #
-#                                                                         #
-#  This file may be distributed under the terms of the GNU GPLv3 license  #
-# ======================================================================= #
 from __future__ import annotations
-
 import re
 from typing import Dict, List
-
 from core.constants import INVALID_CHOICE
 from core.logger import Logger
 from core.types.color import Color
-
 
 def get_confirm(question: str, default_choice=True, allow_go_back=False) -> bool | None:
     """
@@ -24,22 +13,17 @@ def get_confirm(question: str, default_choice=True, allow_go_back=False) -> bool
     :param allow_go_back: Navigate back to a previous dialog
     :return: Either True or False, or None on go_back
     """
-    options_confirm = ["y", "yes"]
-    options_decline = ["n", "no"]
-    options_go_back = ["b", "B"]
-
+    options_confirm = ['y', 'yes']
+    options_decline = ['n', 'no']
+    options_go_back = ['b', 'B']
     if default_choice:
-        def_choice = "(Y/n)"
-        options_confirm.append("")
+        def_choice = '(Y/n)'
+        options_confirm.append('')
     else:
-        def_choice = "(y/N)"
-        options_decline.append("")
-
+        def_choice = '(y/N)'
+        options_decline.append('')
     while True:
-        choice = (
-            input(format_question(question + f" {def_choice}", None)).strip().lower()
-        )
-
+        choice = input(format_question(question + f' {def_choice}', None)).strip().lower()
         if choice in options_confirm:
             return True
         elif choice in options_decline:
@@ -49,14 +33,7 @@ def get_confirm(question: str, default_choice=True, allow_go_back=False) -> bool
         else:
             Logger.print_error(INVALID_CHOICE)
 
-
-def get_number_input(
-    question: str,
-    min_value: int,
-    max_value: int | None = None,
-    default: int | None = None,
-    allow_go_back: bool = False,
-) -> int | None:
+def get_number_input(question: str, min_value: int, max_value: int | None=None, default: int | None=None, allow_go_back: bool=False) -> int | None:
     """
     Helper method to get a number input from the user
     :param question: The question to display
@@ -66,30 +43,20 @@ def get_number_input(
     :param allow_go_back: Navigate back to a previous dialog
     :return: Either the validated number input, or None on go_back
     """
-    options_go_back = ["b", "B"]
+    options_go_back = ['b', 'B']
     _question = format_question(question, default)
     while True:
         _input = input(_question)
         if allow_go_back and _input in options_go_back:
             return None
-
-        if _input == "" and default is not None:
+        if _input == '' and default is not None:
             return default
-
         try:
             return validate_number_input(_input, min_value, max_value)
         except ValueError:
             Logger.print_error(INVALID_CHOICE)
 
-
-def get_string_input(
-    question: str,
-    regex: str | None = None,
-    exclude: List[str] | None = None,
-    allow_empty: bool = False,
-    allow_special_chars: bool = False,
-    default: str | None = None,
-) -> str:
+def get_string_input(question: str, regex: str | None=None, exclude: List[str] | None=None, allow_empty: bool=False, allow_special_chars: bool=False, default: str | None=None) -> str:
     """
     Helper method to get a string input from the user
     :param question: The question to display
@@ -105,22 +72,20 @@ def get_string_input(
     _pattern = re.compile(regex) if regex is not None else None
     while True:
         _input = input(_question)
-
-        if default is not None and _input == "":
+        if default is not None and _input == '':
             return default
-        elif _input == "" and not allow_empty:
-            Logger.print_error("Input must not be empty!")
+        elif _input == '' and (not allow_empty):
+            Logger.print_error(translate('input_must_not_be_empty_1d6398'))
         elif _pattern is not None and _pattern.match(_input):
             return _input
         elif _input.lower() in _exclude:
-            Logger.print_error("This value is already in use/reserved.")
+            Logger.print_error(translate('this_value_is_already_in_6608f5'))
         elif allow_special_chars:
             return _input
         elif not allow_special_chars and _input.isalnum():
             return _input
         else:
             Logger.print_error(INVALID_CHOICE)
-
 
 def get_selection_input(question: str, option_list: List | Dict, default=None) -> str:
     """
@@ -132,7 +97,6 @@ def get_selection_input(question: str, option_list: List | Dict, default=None) -
     """
     while True:
         _input = input(format_question(question, default)).strip().lower()
-
         if isinstance(option_list, list):
             if _input in option_list:
                 return _input
@@ -140,10 +104,8 @@ def get_selection_input(question: str, option_list: List | Dict, default=None) -
             if _input in option_list.keys():
                 return _input
         else:
-            raise ValueError("Invalid option_list type")
-
-        Logger.print_error("Invalid option! Please select a valid option.", False)
-
+            raise ValueError('Invalid option_list type')
+        Logger.print_error(translate('invalid_option_please_select_a_e3a6e6'), False)
 
 def format_question(question: str, default=None) -> str:
     """
@@ -154,10 +116,8 @@ def format_question(question: str, default=None) -> str:
     """
     formatted_q = question
     if default is not None:
-        formatted_q += f" (default={default})"
-
-    return Color.apply(f"###### {formatted_q}: ", Color.CYAN)
-
+        formatted_q += f' (default={default})'
+    return Color.apply(f'###### {formatted_q}: ', Color.CYAN)
 
 def validate_number_input(value: str, min_count: int, max_count: int | None) -> int:
     """
@@ -173,5 +133,4 @@ def validate_number_input(value: str, min_count: int, max_count: int | None) -> 
             return int(value)
     elif int(value) >= min_count:
         return int(value)
-
     raise ValueError

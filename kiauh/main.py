@@ -8,10 +8,33 @@
 # ======================================================================= #
 import io
 import sys
+import locale
+import os
+import json
+import subprocess
 
 from core.logger import Logger
 from core.menus.main_menu import MainMenu
 from core.settings.kiauh_settings import KiauhSettings
+def load_locale():
+    lang, encoding = locale.getdefaultlocale()
+    if not lang:
+        lang = 'en_US'
+    locale_path = os.path.join(os.path.dirname(__file__), 'locales', f'{lang}.json')
+    if not os.path.exists(locale_path):
+        locale_path = os.path.join(os.path.dirname(__file__), 'locales', 'en_US.json')
+    try:
+        with open(locale_path, 'r', encoding='utf-8') as f:
+            translations = json.load(f)
+    except Exception:
+        translations = {}
+    return translations, lang, encoding
+
+def translate(key, **kwargs):
+    text = TRANSLATIONS.get(key, key)
+    if kwargs:
+        return text.format(**kwargs)
+    return text
 
 
 def ensure_encoding() -> None:
@@ -21,26 +44,22 @@ def ensure_encoding() -> None:
 
 
 def main() -> None:
-    import locale
-    import os
-    import subprocess
+    global TRANSLATIONS
+    TRANSLATIONS, lang, encoding = load_locale()
     first_run_flag = os.path.join(os.path.dirname(__file__), '.kiauh_first_run')
     if not os.path.exists(first_run_flag):
-        # 检测系统语言
-        lang, encoding = locale.getdefaultlocale()
-        Logger.print_ok(f"当前系统语言: {lang or '未知'} (编码: {encoding or '未知'})", prefix=False)
+        Logger.print_ok(translate('welcome'), prefix=False)
+        Logger.print_ok(translate('system_language', lang=lang or '未知', encoding=encoding or '未知'), prefix=False)
         # 检查能否 ping 通谷歌
         try:
-            # Windows 下 ping -n 1，Linux/macOS 下 ping -c 1
             ping_cmd = ['ping', 'www.google.com', '-n', '1'] if sys.platform.startswith('win') else ['ping', 'www.google.com', '-c', '1']
             result = subprocess.run(ping_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if result.returncode == 0:
-                Logger.print_ok("网络检测: 可以访问谷歌 (www.google.com)", prefix=False)
+                Logger.print_ok(translate('network_google_ok'), prefix=False)
             else:
-                Logger.print_ok("网络检测: 无法访问谷歌 (www.google.com)", prefix=False)
+                Logger.print_ok(translate('network_google_fail'), prefix=False)
         except Exception as e:
-            Logger.print_ok(f"网络检测异常: {e}", prefix=False)
-        # 创建标记文件
+            Logger.print_ok(translate('network_google_error', error=str(e)), prefix=False)
         with open(first_run_flag, 'w', encoding='utf-8') as f:
             f.write('shown')
     try:
@@ -48,4 +67,4 @@ def main() -> None:
         ensure_encoding()
         MainMenu().run()
     except KeyboardInterrupt:
-        Logger.print_ok("\nHappy printing!\n", prefix=False)
+        Logger.print_ok("\n" + translate('happy_printing') + "\n", prefix=False)
