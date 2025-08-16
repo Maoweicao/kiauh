@@ -44,7 +44,10 @@ def get_kiauh_version() -> str:
     Helper method to get the current KIAUH version by reading the latest tag
     :return: string of the latest tag
     """
-    lastest_tag: str = get_local_tags(Path(__file__).parent.parent)[-1]
+    tags = get_local_tags(Path(__file__).parent.parent)
+    if not tags:
+        return "unknown"
+    lastest_tag: str = tags[-1]
     return lastest_tag
 
 
