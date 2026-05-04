@@ -14,6 +14,7 @@ from typing import Any, Callable, List, TypeVar
 
 from components.klipper import KLIPPER_REPO_URL
 from components.moonraker import MOONRAKER_REPO_URL
+from core.i18n import _
 from core.logger import DialogType, Logger
 from core.services.backup_service import BackupService
 from core.simple_config_parser.simple_config_parser import (
@@ -41,6 +42,7 @@ class InvalidValueError(Exception):
 @dataclass
 class AppSettings:
     backup_before_update: bool | None = field(default=None)
+    language: str | None = field(default=None)
 
 
 @dataclass
@@ -129,8 +131,8 @@ class KiauhSettings:
             Logger.print_dialog(
                 DialogType.ERROR,
                 [
-                    "No KIAUH configuration file found! Please make sure you have at least "
-                    "one of the following configuration files in KIAUH's root directory:",
+                    _("settings.no_cfg_found"),
+                    "\n\n",
                     "● default.kiauh.cfg",
                     "● kiauh.cfg",
                 ],
@@ -156,6 +158,12 @@ class KiauhSettings:
             "backup_before_update",
             self.config.getboolean,
             False,
+        )
+        self.kiauh.language = self.__read_from_cfg(
+            "kiauh",
+            "language",
+            self.config.getval,
+            "en",
         )
 
         # parse Klipper options
@@ -299,6 +307,12 @@ class KiauhSettings:
                 "backup_before_update",
                 str(self.kiauh.backup_before_update),
             )
+        if self.kiauh.language is not None:
+            self.config.set_option(
+                "kiauh",
+                "language",
+                str(self.kiauh.language),
+            )
 
         # Handle repositories
         if self.klipper.repositories is not None:
@@ -342,14 +356,14 @@ class KiauhSettings:
 
     def _prompt_migration_dialog(self) -> None:
         migration_1: List[str] = [
-            "Options 'repo_url' and 'branch' are now combined into a 'repositories' option.",
+            _("settings.migration_desc_1"),
             "\n\n",
-            "● Old format:",
+            f"● {_('settings.migration_old_format')}:",
             "  [klipper]",
             "  repo_url: https://github.com/Klipper3d/klipper",
             "  branch: master",
             "\n\n",
-            "● New format:",
+            f"● {_('settings.migration_new_format')}:",
             "  [klipper]",
             "  repositories:",
             "      https://github.com/Klipper3d/klipper, master",
@@ -357,19 +371,19 @@ class KiauhSettings:
         Logger.print_dialog(
             DialogType.ATTENTION,
             [
-                "Deprecated kiauh.cfg configuration found!",
-                "KAIUH can now attempt to automatically migrate the configuration.",
+                _("settings.migration_detected_1"),
+                _("settings.migration_detected_2"),
                 "\n\n",
                 *migration_1,
             ],
         )
-        if get_confirm("Migrate to the new format?"):
+        if get_confirm(_("settings.migrate_confirm")):
             self._migrate_repo_config()
         else:
             Logger.print_dialog(
                 DialogType.ERROR,
                 [
-                    "Please update the configuration file manually.",
+                    _("settings.please_update_manual"),
                 ],
                 center_content=True,
             )
@@ -381,7 +395,7 @@ class KiauhSettings:
             Logger.print_dialog(
                 DialogType.ERROR,
                 [
-                    "Failed to create backup of kiauh.cfg. Aborting migration. Please migrate manually."
+                    _("settings.backup_failed"),
                 ],
             )
             kill()
@@ -405,12 +419,12 @@ class KiauhSettings:
                     self.config.remove_option(section, "repo_url")
                     self.config.remove_option(section, "branch")
 
-                    Logger.print_ok(f"Successfully migrated {section} configuration")
+                    Logger.print_ok(_("settings.migrate_success", section=section))
 
             self.config.write_file(CUSTOM_CFG)
             self.config.read_file(CUSTOM_CFG)  # reload config
 
         except Exception as e:
-            Logger.print_error(f"Error migrating configuration: {e}")
-            Logger.print_error("Please migrate manually.")
+            Logger.print_error(_("settings.error_migrating") + f" {e}")
+            Logger.print_error(_("settings.please_update_manual"))
             kill()

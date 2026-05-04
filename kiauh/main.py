@@ -9,6 +9,7 @@
 import io
 import sys
 
+from core.i18n import init_i18n
 from core.logger import Logger
 from core.menus.main_menu import MainMenu
 from core.settings.kiauh_settings import KiauhSettings
@@ -22,7 +23,8 @@ def ensure_encoding() -> None:
 
 def main() -> None:
     try:
-        KiauhSettings()
+        settings = KiauhSettings()
+        init_i18n(settings.kiauh.language)
         ensure_encoding()
         MainMenu().run()
     except KeyboardInterrupt:
