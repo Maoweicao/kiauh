@@ -23,7 +23,7 @@ from components.webui_client.client_utils import (
 )
 from components.webui_client.fluidd_data import FluiddData
 from components.webui_client.mainsail_data import MainsailData
-from core.i18n import _
+from core.i18n import _, wc_ljust
 from core.logger import Logger
 from core.menus import FooterType
 from core.menus.advanced_menu import AdvancedMenu
@@ -127,23 +127,35 @@ class MainMenu(BaseMenu):
         footer2 = f"{_('main_menu.changelog')}: {link}"
         pad1 = 32
         pad2 = 26
+
+        # Build right-column cells with CJK-aware left-justify
+        kl_label = _("main_menu.klipper")
+        mr_label = _("main_menu.moonraker")
+        ms_label = _("main_menu.mainsail")
+        fl_label = _("main_menu.fluidd")
+        cc_label = _("main_menu.client_config")
+        ks_label = _("main_menu.klipperscreen")
+        cn_label = _("main_menu.crowsnest")
+        owner_label = _("common.owner")
+        repo_label = _("common.repo")
+
         menu = textwrap.dedent(
             f"""
             ╟──────────────────┬────────────────────────────────────╢
-            ║  0) [{_("main_menu.log_upload")}] │   {_("main_menu.klipper")}: {self.kl_status:<{pad1}} ║
-            ║                  │     {_("common.owner")}: {self.kl_owner:<{pad1}} ║
-            ║  1) [{_("main_menu.install")}]    │      {_("common.repo")}: {self.kl_repo:<{pad1}} ║
+            ║  0) [{_("main_menu.log_upload")}] │   {wc_ljust(f"{kl_label}: {self.kl_status}", pad1)} ║
+            ║                  │     {wc_ljust(f"{owner_label}: {self.kl_owner}", pad1)} ║
+            ║  1) [{_("main_menu.install")}]    │      {wc_ljust(f"{repo_label}: {self.kl_repo}", pad1)} ║
             ║  2) [{_("main_menu.update")}]     ├────────────────────────────────────╢
-            ║  3) [{_("main_menu.remove")}]     │ {_("main_menu.moonraker")}: {self.mr_status:<{pad1}} ║
-            ║  4) [{_("main_menu.advanced")}]   │     {_("common.owner")}: {self.mr_owner:<{pad1}} ║
-            ║  5) [{_("main_menu.backup")}]     │      {_("common.repo")}: {self.mr_repo:<{pad1}} ║
+            ║  3) [{_("main_menu.remove")}]     │ {wc_ljust(f"{mr_label}: {self.mr_status}", pad1)} ║
+            ║  4) [{_("main_menu.advanced")}]   │     {wc_ljust(f"{owner_label}: {self.mr_owner}", pad1)} ║
+            ║  5) [{_("main_menu.backup")}]     │      {wc_ljust(f"{repo_label}: {self.mr_repo}", pad1)} ║
             ║                  ├────────────────────────────────────╢
-            ║  S) [{_("main_menu.settings")}]   │        {_("main_menu.mainsail")}: {self.ms_status:<{pad2}} ║
-            ║                  │          {_("main_menu.fluidd")}: {self.fl_status:<{pad2}} ║
-            ║ {_("main_menu.community")}:       │   {_("main_menu.client_config")}: {self.cc_status:<{pad2}} ║
+            ║  S) [{_("main_menu.settings")}]   │        {wc_ljust(f"{ms_label}: {self.ms_status}", pad2)} ║
+            ║                  │          {wc_ljust(f"{fl_label}: {self.fl_status}", pad2)} ║
+            ║ {_("main_menu.community")}:       │   {wc_ljust(f"{cc_label}: {self.cc_status}", pad2)} ║
             ║  E) [{_("main_menu.extensions")}] │                                    ║
-            ║                  │   {_("main_menu.klipperscreen")}: {self.ks_status:<{pad2}} ║
-            ║                  │       {_("main_menu.crowsnest")}: {self.cn_status:<{pad2}} ║
+            ║                  │   {wc_ljust(f"{ks_label}: {self.ks_status}", pad2)} ║
+            ║                  │       {wc_ljust(f"{cn_label}: {self.cn_status}", pad2)} ║
             ╟──────────────────┼────────────────────────────────────╢
             ║ {footer1:^25} │ {footer2:^43} ║
             ╟──────────────────┴────────────────────────────────────╢

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import locale
+import unicodedata
 
 from .translation import TranslationManager
 
@@ -37,6 +38,12 @@ def init_i18n(settings_lang: str | None = None) -> str:
     return _i18n.current_language
 
 
+def reload_i18n(lang: str) -> str:
+    """Reload translations immediately (for in-session language switch)."""
+    _i18n.load_language(lang)
+    return _i18n.current_language
+
+
 def get_current_language() -> str:
     return _i18n.current_language
 
@@ -44,3 +51,40 @@ def get_current_language() -> str:
 def get_available_languages() -> dict[str, str]:
     """Returns {lang_code: display_name} for all available translations."""
     return _i18n.available_languages
+
+
+def display_width(text: str) -> int:
+    """Return the terminal display width of a string.
+
+    CJK characters (Chinese, Japanese, Korean) take 2 columns,
+    ASCII/Latin characters take 1 column.
+    """
+    width = 0
+    for ch in text:
+        if isinstance(ch, str) and len(ch) == 1:
+            ea = unicodedata.east_asian_width(ch)
+            if ea in ("W", "F"):
+                width += 2
+            else:
+                width += 1
+        else:
+            width += len(ch)
+    return width
+
+
+def wc_ljust(text: str, width: int) -> str:
+    """Left-justify text within given display width, accounting for CJK."""
+    dw = display_width(text)
+    if dw >= width:
+        return text
+    return text + " " * (width - dw)
+
+
+def wc_center(text: str, width: int, fillchar: str = " ") -> str:
+    """Center text within given display width, accounting for CJK."""
+    dw = display_width(text)
+    if dw >= width:
+        return text
+    left = (width - dw) // 2
+    right = width - dw - left
+    return fillchar * left + text + fillchar * right

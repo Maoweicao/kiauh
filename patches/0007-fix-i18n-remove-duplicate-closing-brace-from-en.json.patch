@@ -1,0 +1,23 @@
+From 2093fc122d8a77fe94db28f4751eea38dbbad467 Mon Sep 17 00:00:00 2001
+From: Maoweicao <Maoweicao@users.noreply.github.com>
+Date: Mon, 4 May 2026 18:42:30 +0800
+Subject: [PATCH 7/7] fix(i18n): remove duplicate closing brace from en.json
+
+The edit operation left an extra '}' at the root level, causing
+JSONDecodeError and silent fallback to raw translation keys.
+---
+ kiauh/core/i18n/locales/en.json | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/kiauh/core/i18n/locales/en.json b/kiauh/core/i18n/locales/en.json
+index 743c1fe..e5e9376 100644
+--- a/kiauh/core/i18n/locales/en.json
++++ b/kiauh/core/i18n/locales/en.json
+@@ -309,4 +309,3 @@
+         "component.hostname_error": "Error during change hostname procedure: {error}"
+     }
+ }
+-}
+-- 
+2.52.0.windows.1
+

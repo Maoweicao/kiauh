@@ -13,7 +13,7 @@ from typing import Type
 
 from components.klipper.klipper_utils import get_klipper_status
 from components.moonraker.utils.utils import get_moonraker_status
-from core.i18n import _, get_available_languages
+from core.i18n import _, get_available_languages, reload_i18n
 from core.logger import DialogType, Logger
 from core.menus import Option
 from core.menus.base_menu import BaseMenu
@@ -184,6 +184,7 @@ class SettingsMenu(BaseMenu):
         self.current_language = selected_lang
         self.settings.kiauh.language = selected_lang
         self.settings.save()
+        reload_i18n(selected_lang)
         Logger.print_ok(
             _("settings_menu.language_changed", name=lang_map[selected_lang])
         )

@@ -1,0 +1,177 @@
+From 51de8eade318360f77fdb44b5e2fdfdd7ecdbcf3 Mon Sep 17 00:00:00 2001
+From: Maoweicao <Maoweicao@users.noreply.github.com>
+Date: Mon, 4 May 2026 18:26:02 +0800
+Subject: [PATCH 3/7] feat(i18n): integrate language settings into KIAUH
+ configuration
+
+- Add 'language' field to AppSettings dataclass with read/write support
+- Add language: en to default.kiauh.cfg with available languages comment
+- Initialize i18n in main.py after KiauhSettings load, using KIAUH_LANG env var or config value
+---
+ default.kiauh.cfg                     |  3 ++
+ kiauh/core/settings/kiauh_settings.py | 40 ++++++++++++++++++---------
+ kiauh/main.py                         |  4 ++-
+ 3 files changed, 33 insertions(+), 14 deletions(-)
+
+diff --git a/default.kiauh.cfg b/default.kiauh.cfg
+index d3ac149..68b62f8 100644
+--- a/default.kiauh.cfg
++++ b/default.kiauh.cfg
+@@ -1,5 +1,8 @@
+ [kiauh]
+ backup_before_update: False
++# Available languages: en, zh_CN, de, ja
++# Use 'auto' to auto-detect from terminal locale
++language: en
+ 
+ [klipper]
+ # add custom repositories here, if at least one is given, the first in the list will be used by default
+diff --git a/kiauh/core/settings/kiauh_settings.py b/kiauh/core/settings/kiauh_settings.py
+index a2a2be2..27755fc 100644
+--- a/kiauh/core/settings/kiauh_settings.py
++++ b/kiauh/core/settings/kiauh_settings.py
+@@ -14,6 +14,7 @@ from typing import Any, Callable, List, TypeVar
+ 
+ from components.klipper import KLIPPER_REPO_URL
+ from components.moonraker import MOONRAKER_REPO_URL
++from core.i18n import _
+ from core.logger import DialogType, Logger
+ from core.services.backup_service import BackupService
+ from core.simple_config_parser.simple_config_parser import (
+@@ -41,6 +42,7 @@ class InvalidValueError(Exception):
+ @dataclass
+ class AppSettings:
+     backup_before_update: bool | None = field(default=None)
++    language: str | None = field(default=None)
+ 
+ 
+ @dataclass
+@@ -129,8 +131,8 @@ class KiauhSettings:
+             Logger.print_dialog(
+                 DialogType.ERROR,
+                 [
+-                    "No KIAUH configuration file found! Please make sure you have at least "
+-                    "one of the following configuration files in KIAUH's root directory:",
++                    _("settings.no_cfg_found"),
++                    "\n\n",
+                     "● default.kiauh.cfg",
+                     "● kiauh.cfg",
+                 ],
+@@ -157,6 +159,12 @@ class KiauhSettings:
+             self.config.getboolean,
+             False,
+         )
++        self.kiauh.language = self.__read_from_cfg(
++            "kiauh",
++            "language",
++            self.config.getval,
++            "en",
++        )
+ 
+         # parse Klipper options
+         self.klipper.use_python_binary = self.__read_from_cfg(
+@@ -299,6 +307,12 @@ class KiauhSettings:
+                 "backup_before_update",
+                 str(self.kiauh.backup_before_update),
+             )
++        if self.kiauh.language is not None:
++            self.config.set_option(
++                "kiauh",
++                "language",
++                str(self.kiauh.language),
++            )
+ 
+         # Handle repositories
+         if self.klipper.repositories is not None:
+@@ -342,14 +356,14 @@ class KiauhSettings:
+ 
+     def _prompt_migration_dialog(self) -> None:
+         migration_1: List[str] = [
+-            "Options 'repo_url' and 'branch' are now combined into a 'repositories' option.",
++            _("settings.migration_desc_1"),
+             "\n\n",
+-            "● Old format:",
++            f"● {_('settings.migration_old_format')}:",
+             "  [klipper]",
+             "  repo_url: https://github.com/Klipper3d/klipper",
+             "  branch: master",
+             "\n\n",
+-            "● New format:",
++            f"● {_('settings.migration_new_format')}:",
+             "  [klipper]",
+             "  repositories:",
+             "      https://github.com/Klipper3d/klipper, master",
+@@ -357,19 +371,19 @@ class KiauhSettings:
+         Logger.print_dialog(
+             DialogType.ATTENTION,
+             [
+-                "Deprecated kiauh.cfg configuration found!",
+-                "KAIUH can now attempt to automatically migrate the configuration.",
++                _("settings.migration_detected_1"),
++                _("settings.migration_detected_2"),
+                 "\n\n",
+                 *migration_1,
+             ],
+         )
+-        if get_confirm("Migrate to the new format?"):
++        if get_confirm(_("settings.migrate_confirm")):
+             self._migrate_repo_config()
+         else:
+             Logger.print_dialog(
+                 DialogType.ERROR,
+                 [
+-                    "Please update the configuration file manually.",
++                    _("settings.please_update_manual"),
+                 ],
+                 center_content=True,
+             )
+@@ -381,7 +395,7 @@ class KiauhSettings:
+             Logger.print_dialog(
+                 DialogType.ERROR,
+                 [
+-                    "Failed to create backup of kiauh.cfg. Aborting migration. Please migrate manually."
++                    _("settings.backup_failed"),
+                 ],
+             )
+             kill()
+@@ -405,12 +419,12 @@ class KiauhSettings:
+                     self.config.remove_option(section, "repo_url")
+                     self.config.remove_option(section, "branch")
+ 
+-                    Logger.print_ok(f"Successfully migrated {section} configuration")
++                    Logger.print_ok(_("settings.migrate_success", section=section))
+ 
+             self.config.write_file(CUSTOM_CFG)
+             self.config.read_file(CUSTOM_CFG)  # reload config
+ 
+         except Exception as e:
+-            Logger.print_error(f"Error migrating configuration: {e}")
+-            Logger.print_error("Please migrate manually.")
++            Logger.print_error(_("settings.error_migrating") + f" {e}")
++            Logger.print_error(_("settings.please_update_manual"))
+             kill()
+diff --git a/kiauh/main.py b/kiauh/main.py
+index 3832ba6..093c63f 100644
+--- a/kiauh/main.py
++++ b/kiauh/main.py
+@@ -9,6 +9,7 @@
+ import io
+ import sys
+ 
++from core.i18n import init_i18n
+ from core.logger import Logger
+ from core.menus.main_menu import MainMenu
+ from core.settings.kiauh_settings import KiauhSettings
+@@ -22,7 +23,8 @@ def ensure_encoding() -> None:
+ 
+ def main() -> None:
+     try:
+-        KiauhSettings()
++        settings = KiauhSettings()
++        init_i18n(settings.kiauh.language)
+         ensure_encoding()
+         MainMenu().run()
+     except KeyboardInterrupt:
+-- 
+2.52.0.windows.1
+

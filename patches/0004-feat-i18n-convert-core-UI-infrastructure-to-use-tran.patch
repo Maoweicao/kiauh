@@ -1,0 +1,214 @@
+From b7f7850f6f74ea646fdb2655c17decb201a5ab37 Mon Sep 17 00:00:00 2001
+From: Maoweicao <Maoweicao@users.noreply.github.com>
+Date: Mon, 4 May 2026 18:26:12 +0800
+Subject: [PATCH 4/7] feat(i18n): convert core UI infrastructure to use
+ translations
+
+- Logger: make [INFO]/[OK]/[WARN]/[ERROR] prefix labels translatable
+- BaseMenu: translate header title/subtitle, footer (Quit/Back/Help) texts
+- BaseMenu: translate 'Happy printing!' and unexpected error messages
+- Input utils: translate validation error messages
+- ComponentStatus: use translation keys in StatusMap (resolved lazily via _())
+---
+ kiauh/core/logger.py                 | 11 ++++++-----
+ kiauh/core/menus/base_menu.py        | 17 +++++++++--------
+ kiauh/core/types/component_status.py |  8 ++++----
+ kiauh/utils/input_utils.py           | 14 +++++++-------
+ 4 files changed, 26 insertions(+), 24 deletions(-)
+
+diff --git a/kiauh/core/logger.py b/kiauh/core/logger.py
+index 27dc1e7..5718ee5 100644
+--- a/kiauh/core/logger.py
++++ b/kiauh/core/logger.py
+@@ -12,6 +12,7 @@ import textwrap
+ from enum import Enum
+ from typing import List
+ 
++from core.i18n import _
+ from core.types.color import Color
+ 
+ 
+@@ -37,27 +38,27 @@ BORDER_RIGHT: str = "┃"
+ class Logger:
+     @staticmethod
+     def print_info(msg, prefix=True, start="", end="\n") -> None:
+-        message = f"[INFO] {msg}" if prefix else msg
++        message = _("logger.info", msg=msg) if prefix else msg
+         Logger.__print(Color.WHITE, start, message, end)
+ 
+     @staticmethod
+     def print_ok(msg: str = "Success!", prefix=True, start="", end="\n") -> None:
+-        message = f"[OK] {msg}" if prefix else msg
++        message = _("logger.ok", msg=msg) if prefix else msg
+         Logger.__print(Color.GREEN, start, message, end)
+ 
+     @staticmethod
+     def print_warn(msg, prefix=True, start="", end="\n") -> None:
+-        message = f"[WARN] {msg}" if prefix else msg
++        message = _("logger.warn", msg=msg) if prefix else msg
+         Logger.__print(Color.YELLOW, start, message, end)
+ 
+     @staticmethod
+     def print_error(msg, prefix=True, start="", end="\n") -> None:
+-        message = f"[ERROR] {msg}" if prefix else msg
++        message = _("logger.error", msg=msg) if prefix else msg
+         Logger.__print(Color.RED, start, message, end)
+ 
+     @staticmethod
+     def print_status(msg, prefix=True, start="", end="\n") -> None:
+-        message = f"\n###### {msg}" if prefix else msg
++        message = _("logger.status", msg=msg) if prefix else msg
+         Logger.__print(Color.MAGENTA, start, message, end)
+ 
+     @staticmethod
+diff --git a/kiauh/core/menus/base_menu.py b/kiauh/core/menus/base_menu.py
+index 8a4de85..4083eb2 100644
+--- a/kiauh/core/menus/base_menu.py
++++ b/kiauh/core/menus/base_menu.py
+@@ -17,6 +17,7 @@ from abc import abstractmethod
+ from enum import Enum
+ from typing import Dict, Type
+ 
++from core.i18n import _
+ from core.logger import Logger
+ from core.menus import FooterType, Option
+ from core.services.message_service import MessageService
+@@ -30,8 +31,8 @@ def clear() -> None:
+ 
+ 
+ def print_header() -> None:
+-    line1 = " [ KIAUH ] "
+-    line2 = "Klipper Installation And Update Helper"
++    line1 = f" [ {_('header.title')} ] "
++    line2 = _("header.subtitle")
+     line3 = ""
+     color = Color.CYAN
+     count = 62 - len(str(color)) - len(str(Color.RST))
+@@ -48,7 +49,7 @@ def print_header() -> None:
+ 
+ 
+ def print_quit_footer() -> None:
+-    text = "Q) Quit"
++    text = _("common.quit")
+     color = Color.RED
+     count = 62 - len(str(color)) - len(str(Color.RST))
+     footer = textwrap.dedent(
+@@ -61,7 +62,7 @@ def print_quit_footer() -> None:
+ 
+ 
+ def print_back_footer() -> None:
+-    text = "B) « Back"
++    text = _("common.back")
+     color = Color.GREEN
+     count = 62 - len(str(color)) - len(str(Color.RST))
+     footer = textwrap.dedent(
+@@ -74,8 +75,8 @@ def print_back_footer() -> None:
+ 
+ 
+ def print_back_help_footer() -> None:
+-    text1 = "B) « Back"
+-    text2 = "H) Help [?]"
++    text1 = _("common.back")
++    text2 = _("common.help")
+     color1 = Color.GREEN
+     color2 = Color.YELLOW
+     count = 34 - len(str(color1)) - len(str(Color.RST))
+@@ -157,7 +158,7 @@ class BaseMenu(metaclass=PostInitCaller):
+         self.help_menu(previous_menu=self.__class__).run()
+ 
+     def __exit(self, **kwargs) -> None:
+-        Logger.print_ok("###### Happy printing!", False)
++        Logger.print_ok(f"###### {_('common.happy_printing')}", False)
+         sys.exit(0)
+ 
+     @abstractmethod
+@@ -235,5 +236,5 @@ class BaseMenu(metaclass=PostInitCaller):
+ 
+         except Exception as e:
+             Logger.print_error(
+-                f"An unexpected error occured:\n{e}\n{traceback.format_exc()}"
++                f"{_('common.unexpected_error')}\n{e}\n{traceback.format_exc()}"
+             )
+diff --git a/kiauh/core/types/component_status.py b/kiauh/core/types/component_status.py
+index f109b58..ab25070 100644
+--- a/kiauh/core/types/component_status.py
++++ b/kiauh/core/types/component_status.py
+@@ -13,10 +13,10 @@ from typing import Dict, Literal
+ 
+ StatusText = Literal["Installed", "Not installed", "Incomplete"]
+ StatusCode = Literal[0, 1, 2]
+-StatusMap: Dict[StatusCode, StatusText] = {
+-    0: "Not installed",
+-    1: "Incomplete",
+-    2: "Installed",
++StatusMap: Dict[StatusCode, str] = {
++    0: "status.not_installed",
++    1: "status.incomplete",
++    2: "status.installed",
+ }
+ 
+ 
+diff --git a/kiauh/utils/input_utils.py b/kiauh/utils/input_utils.py
+index 9c994ae..ea61d67 100644
+--- a/kiauh/utils/input_utils.py
++++ b/kiauh/utils/input_utils.py
+@@ -11,7 +11,7 @@ from __future__ import annotations
+ import re
+ from typing import Dict, List
+ 
+-from core.constants import INVALID_CHOICE
++from core.i18n import _
+ from core.logger import Logger
+ from core.types.color import Color
+ 
+@@ -47,7 +47,7 @@ def get_confirm(question: str, default_choice=True, allow_go_back=False) -> bool
+         elif allow_go_back and choice in options_go_back:
+             return None
+         else:
+-            Logger.print_error(INVALID_CHOICE)
++            Logger.print_error(_("common.invalid_choice"))
+ 
+ 
+ def get_number_input(
+@@ -79,7 +79,7 @@ def get_number_input(
+         try:
+             return validate_number_input(_input, min_value, max_value)
+         except ValueError:
+-            Logger.print_error(INVALID_CHOICE)
++            Logger.print_error(_("common.invalid_choice"))
+ 
+ 
+ def get_string_input(
+@@ -109,17 +109,17 @@ def get_string_input(
+         if default is not None and _input == "":
+             return default
+         elif _input == "" and not allow_empty:
+-            Logger.print_error("Input must not be empty!")
++            Logger.print_error(_("common.input_not_empty"))
+         elif _pattern is not None and _pattern.match(_input):
+             return _input
+         elif _input.lower() in _exclude:
+-            Logger.print_error("This value is already in use/reserved.")
++            Logger.print_error(_("common.value_reserved"))
+         elif allow_special_chars:
+             return _input
+         elif not allow_special_chars and _input.isalnum():
+             return _input
+         else:
+-            Logger.print_error(INVALID_CHOICE)
++            Logger.print_error(_("common.invalid_choice"))
+ 
+ 
+ def get_selection_input(question: str, option_list: List | Dict, default=None) -> str:
+@@ -142,7 +142,7 @@ def get_selection_input(question: str, option_list: List | Dict, default=None) -
+         else:
+             raise ValueError("Invalid option_list type")
+ 
+-        Logger.print_error("Invalid option! Please select a valid option.", False)
++        Logger.print_error(_("common.invalid_option"), False)
+ 
+ 
+ def format_question(question: str, default=None) -> str:
+-- 
+2.52.0.windows.1
+

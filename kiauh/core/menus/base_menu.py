@@ -17,7 +17,7 @@ from abc import abstractmethod
 from enum import Enum
 from typing import Dict, Type
 
-from core.i18n import _
+from core.i18n import _, display_width, wc_center
 from core.logger import Logger
 from core.menus import FooterType, Option
 from core.services.message_service import MessageService
@@ -31,17 +31,17 @@ def clear() -> None:
 
 
 def print_header() -> None:
-    line1 = f" [ {_('header.title')} ] "
-    line2 = _("header.subtitle")
-    line3 = ""
     color = Color.CYAN
-    count = 62 - len(str(color)) - len(str(Color.RST))
+    count = 62 - display_width(str(color)) - display_width(str(Color.RST))
+    line1 = wc_center(f" [ {_('header.title')} ] ", count, "~")
+    line2 = wc_center(_("header.subtitle"), count)
+    line3 = wc_center("", count, "~")
     header = textwrap.dedent(
         f"""
         ╔═══════════════════════════════════════════════════════╗
-        ║ {Color.apply(f"{line1:~^{count}}", color)} ║
-        ║ {Color.apply(f"{line2:^{count}}", color)} ║
-        ║ {Color.apply(f"{line3:~^{count}}", color)} ║
+        ║ {Color.apply(line1, color)} ║
+        ║ {Color.apply(line2, color)} ║
+        ║ {Color.apply(line3, color)} ║
         ╚═══════════════════════════════════════════════════════╝
         """
     )[1:]
@@ -51,10 +51,11 @@ def print_header() -> None:
 def print_quit_footer() -> None:
     text = _("common.quit")
     color = Color.RED
-    count = 62 - len(str(color)) - len(str(Color.RST))
+    count = 62 - display_width(str(color)) - display_width(str(Color.RST))
+    centered = wc_center(text, count)
     footer = textwrap.dedent(
         f"""
-        ║ {color}{text:^{count}}{Color.RST} ║
+        ║ {color}{centered}{Color.RST} ║
         ╚═══════════════════════════════════════════════════════╝
         """
     )[1:]
@@ -64,10 +65,11 @@ def print_quit_footer() -> None:
 def print_back_footer() -> None:
     text = _("common.back")
     color = Color.GREEN
-    count = 62 - len(str(color)) - len(str(Color.RST))
+    count = 62 - display_width(str(color)) - display_width(str(Color.RST))
+    centered = wc_center(text, count)
     footer = textwrap.dedent(
         f"""
-        ║ {color}{text:^{count}}{Color.RST} ║
+        ║ {color}{centered}{Color.RST} ║
         ╚═══════════════════════════════════════════════════════╝
         """
     )[1:]
@@ -79,10 +81,12 @@ def print_back_help_footer() -> None:
     text2 = _("common.help")
     color1 = Color.GREEN
     color2 = Color.YELLOW
-    count = 34 - len(str(color1)) - len(str(Color.RST))
+    count = 34 - display_width(str(color1)) - display_width(str(Color.RST))
+    centered1 = wc_center(text1, count)
+    centered2 = wc_center(text2, count)
     footer = textwrap.dedent(
         f"""
-        ║ {color1}{text1:^{count}}{Color.RST} │ {color2}{text2:^{count}}{Color.RST} ║
+        ║ {color1}{centered1}{Color.RST} │ {color2}{centered2}{Color.RST} ║
         ╚═══════════════════════════╧═══════════════════════════╝
         """
     )[1:]
@@ -111,7 +115,7 @@ class BaseMenu(metaclass=PostInitCaller):
     options: Dict[str, Option] = {}
     options_offset: int = 0
     default_option: Option = None
-    input_label_txt: str = "Perform action"
+    input_label_txt: str = ""
     header: bool = False
 
     loading_msg: str = ""
@@ -135,7 +139,9 @@ class BaseMenu(metaclass=PostInitCaller):
         self.set_previous_menu(self.previous_menu)
         self.set_options()
 
-        # conditionally add options based on footer type
+        if not self.input_label_txt:
+            self.input_label_txt = _("common.perform_action")
+
         if self.footer_type is FooterType.QUIT:
             self.options["q"] = Option(method=self.__exit)
         if self.footer_type is FooterType.BACK:
@@ -143,7 +149,6 @@ class BaseMenu(metaclass=PostInitCaller):
         if self.footer_type is FooterType.BACK_HELP:
             self.options["b"] = Option(method=self.__go_back)
             self.options["h"] = Option(method=self.__go_to_help)
-        # if defined, add the default option to the options dict
         if self.default_option is not None:
             self.options[""] = self.default_option
 
@@ -182,18 +187,20 @@ class BaseMenu(metaclass=PostInitCaller):
             self.spinner = None
 
     def __print_menu_title(self) -> None:
-        count = 62 - len(str(self.title_color)) - len(str(Color.RST))
+        count = (
+            62 - display_width(str(self.title_color)) - display_width(str(Color.RST))
+        )
         menu_title = "╔═══════════════════════════════════════════════════════╗\n"
         if self.title:
-            title = (
+            title_raw = (
                 f" [ {self.title} ] "
                 if self.title_style == MenuTitleStyle.STYLED
                 else self.title
             )
-            line = (
-                f"{title:~^{count}}"
-                if self.title_style == MenuTitleStyle.STYLED
-                else f"{title:^{count}}"
+            line = wc_center(
+                title_raw,
+                count,
+                "~" if self.title_style == MenuTitleStyle.STYLED else " ",
             )
             menu_title += f"║ {Color.apply(line, self.title_color)} ║\n"
         print(menu_title, end="")
