@@ -127,34 +127,29 @@ class MainMenu(BaseMenu):
         footer2_raw = f"{_('main_menu.changelog')}: {link}"
         pad1 = 32
         pad2 = 26
+        lw1 = 11  # label width for upper section: "Label:     "
+        lw2 = 15  # label width for lower section: "Label:          "
 
-        kl_label = _("main_menu.klipper")
-        mr_label = _("main_menu.moonraker")
-        ms_label = _("main_menu.mainsail")
-        fl_label = _("main_menu.fluidd")
-        cc_label = _("main_menu.client_config")
-        ks_label = _("main_menu.klipperscreen")
-        cn_label = _("main_menu.crowsnest")
-        owner_label = _("common.owner")
-        repo_label = _("common.repo")
+        def cell(label: str, status: str, pad: int, lw: int) -> str:
+            return wc_ljust(f"{label}:".ljust(lw) + " " + status, pad)
 
         menu = textwrap.dedent(
             f"""
             ╟──────────────────┬────────────────────────────────────╢
-            ║  0) [{_("main_menu.log_upload")}] │   {wc_ljust(f"{kl_label}: {self.kl_status}", pad1)} ║
-            ║                  │     {wc_ljust(f"{owner_label}: {self.kl_owner}", pad1)} ║
-            ║  1) [{_("main_menu.install")}]    │      {wc_ljust(f"{repo_label}: {self.kl_repo}", pad1)} ║
+            ║  0) [{_("main_menu.log_upload")}] │ {cell(_("main_menu.klipper"), self.kl_status, pad1, lw1)} ║
+            ║                  │ {cell(_("common.owner"), self.kl_owner, pad1, lw1)} ║
+            ║  1) [{_("main_menu.install")}]    │ {cell(_("common.repo"), self.kl_repo, pad1, lw1)} ║
             ║  2) [{_("main_menu.update")}]     ├────────────────────────────────────╢
-            ║  3) [{_("main_menu.remove")}]     │ {wc_ljust(f"{mr_label}: {self.mr_status}", pad1)} ║
-            ║  4) [{_("main_menu.advanced")}]   │     {wc_ljust(f"{owner_label}: {self.mr_owner}", pad1)} ║
-            ║  5) [{_("main_menu.backup")}]     │      {wc_ljust(f"{repo_label}: {self.mr_repo}", pad1)} ║
+            ║  3) [{_("main_menu.remove")}]     │ {cell(_("main_menu.moonraker"), self.mr_status, pad1, lw1)} ║
+            ║  4) [{_("main_menu.advanced")}]   │ {cell(_("common.owner"), self.mr_owner, pad1, lw1)} ║
+            ║  5) [{_("main_menu.backup")}]     │ {cell(_("common.repo"), self.mr_repo, pad1, lw1)} ║
             ║                  ├────────────────────────────────────╢
-            ║  S) [{_("main_menu.settings")}]   │        {wc_ljust(f"{ms_label}: {self.ms_status}", pad2)} ║
-            ║                  │          {wc_ljust(f"{fl_label}: {self.fl_status}", pad2)} ║
-            ║ {_("main_menu.community")}:       │   {wc_ljust(f"{cc_label}: {self.cc_status}", pad2)} ║
+            ║  S) [{_("main_menu.settings")}]   │ {cell(_("main_menu.mainsail"), self.ms_status, pad2, lw2)} ║
+            ║                  │ {cell(_("main_menu.fluidd"), self.fl_status, pad2, lw2)} ║
+            ║ {_("main_menu.community")}:       │ {cell(_("main_menu.client_config"), self.cc_status, pad2, lw2)} ║
             ║  E) [{_("main_menu.extensions")}] │                                    ║
-            ║                  │   {wc_ljust(f"{ks_label}: {self.ks_status}", pad2)} ║
-            ║                  │       {wc_ljust(f"{cn_label}: {self.cn_status}", pad2)} ║
+            ║                  │ {cell(_("main_menu.klipperscreen"), self.ks_status, pad2, lw2)} ║
+            ║                  │ {cell(_("main_menu.crowsnest"), self.cn_status, pad2, lw2)} ║
             ╟──────────────────┼────────────────────────────────────╢
             ║ {wc_center(footer1, 25)} │ {wc_center(footer2_raw, 43)} ║
             ╟──────────────────┴────────────────────────────────────╢
