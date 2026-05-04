@@ -17,6 +17,7 @@ from abc import abstractmethod
 from enum import Enum
 from typing import Dict, Type
 
+from core.i18n import _
 from core.logger import Logger
 from core.menus import FooterType, Option
 from core.services.message_service import MessageService
@@ -30,8 +31,8 @@ def clear() -> None:
 
 
 def print_header() -> None:
-    line1 = " [ KIAUH ] "
-    line2 = "Klipper Installation And Update Helper"
+    line1 = f" [ {_('header.title')} ] "
+    line2 = _("header.subtitle")
     line3 = ""
     color = Color.CYAN
     count = 62 - len(str(color)) - len(str(Color.RST))
@@ -48,7 +49,7 @@ def print_header() -> None:
 
 
 def print_quit_footer() -> None:
-    text = "Q) Quit"
+    text = _("common.quit")
     color = Color.RED
     count = 62 - len(str(color)) - len(str(Color.RST))
     footer = textwrap.dedent(
@@ -61,7 +62,7 @@ def print_quit_footer() -> None:
 
 
 def print_back_footer() -> None:
-    text = "B) « Back"
+    text = _("common.back")
     color = Color.GREEN
     count = 62 - len(str(color)) - len(str(Color.RST))
     footer = textwrap.dedent(
@@ -74,8 +75,8 @@ def print_back_footer() -> None:
 
 
 def print_back_help_footer() -> None:
-    text1 = "B) « Back"
-    text2 = "H) Help [?]"
+    text1 = _("common.back")
+    text2 = _("common.help")
     color1 = Color.GREEN
     color2 = Color.YELLOW
     count = 34 - len(str(color1)) - len(str(Color.RST))
@@ -157,7 +158,7 @@ class BaseMenu(metaclass=PostInitCaller):
         self.help_menu(previous_menu=self.__class__).run()
 
     def __exit(self, **kwargs) -> None:
-        Logger.print_ok("###### Happy printing!", False)
+        Logger.print_ok(f"###### {_('common.happy_printing')}", False)
         sys.exit(0)
 
     @abstractmethod
@@ -235,5 +236,5 @@ class BaseMenu(metaclass=PostInitCaller):
 
         except Exception as e:
             Logger.print_error(
-                f"An unexpected error occured:\n{e}\n{traceback.format_exc()}"
+                f"{_('common.unexpected_error')}\n{e}\n{traceback.format_exc()}"
             )

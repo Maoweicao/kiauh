@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from typing import Dict, List
 
-from core.constants import INVALID_CHOICE
+from core.i18n import _
 from core.logger import Logger
 from core.types.color import Color
 
@@ -47,7 +47,7 @@ def get_confirm(question: str, default_choice=True, allow_go_back=False) -> bool
         elif allow_go_back and choice in options_go_back:
             return None
         else:
-            Logger.print_error(INVALID_CHOICE)
+            Logger.print_error(_("common.invalid_choice"))
 
 
 def get_number_input(
@@ -79,7 +79,7 @@ def get_number_input(
         try:
             return validate_number_input(_input, min_value, max_value)
         except ValueError:
-            Logger.print_error(INVALID_CHOICE)
+            Logger.print_error(_("common.invalid_choice"))
 
 
 def get_string_input(
@@ -109,17 +109,17 @@ def get_string_input(
         if default is not None and _input == "":
             return default
         elif _input == "" and not allow_empty:
-            Logger.print_error("Input must not be empty!")
+            Logger.print_error(_("common.input_not_empty"))
         elif _pattern is not None and _pattern.match(_input):
             return _input
         elif _input.lower() in _exclude:
-            Logger.print_error("This value is already in use/reserved.")
+            Logger.print_error(_("common.value_reserved"))
         elif allow_special_chars:
             return _input
         elif not allow_special_chars and _input.isalnum():
             return _input
         else:
-            Logger.print_error(INVALID_CHOICE)
+            Logger.print_error(_("common.invalid_choice"))
 
 
 def get_selection_input(question: str, option_list: List | Dict, default=None) -> str:
@@ -142,7 +142,7 @@ def get_selection_input(question: str, option_list: List | Dict, default=None) -
         else:
             raise ValueError("Invalid option_list type")
 
-        Logger.print_error("Invalid option! Please select a valid option.", False)
+        Logger.print_error(_("common.invalid_option"), False)
 
 
 def format_question(question: str, default=None) -> str:

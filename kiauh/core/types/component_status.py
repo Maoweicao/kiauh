@@ -13,10 +13,10 @@ from typing import Dict, Literal
 
 StatusText = Literal["Installed", "Not installed", "Incomplete"]
 StatusCode = Literal[0, 1, 2]
-StatusMap: Dict[StatusCode, StatusText] = {
-    0: "Not installed",
-    1: "Incomplete",
-    2: "Installed",
+StatusMap: Dict[StatusCode, str] = {
+    0: "status.not_installed",
+    1: "status.incomplete",
+    2: "status.installed",
 }
 
 
