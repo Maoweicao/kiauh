@@ -22,6 +22,7 @@ from components.webui_client.client_setup import install_client
 from components.webui_client.fluidd_data import FluiddData
 from components.webui_client.mainsail_data import MainsailData
 from components.webui_client.menus.client_install_menu import ClientInstallMenu
+from core.i18n import _
 from core.menus import Option
 from core.menus.base_menu import BaseMenu
 from core.settings.kiauh_settings import KiauhSettings
@@ -33,7 +34,7 @@ from core.types.color import Color
 class InstallMenu(BaseMenu):
     def __init__(self, previous_menu: Type[BaseMenu] | None = None) -> None:
         super().__init__()
-        self.title = "Installation Menu"
+        self.title = _("install_menu.title")
         self.title_color = Color.GREEN
         self.previous_menu: Type[BaseMenu] | None = previous_menu
         self.klsvc = KlipperSetupService()
@@ -58,17 +59,17 @@ class InstallMenu(BaseMenu):
 
     def print_menu(self) -> None:
         menu = textwrap.dedent(
-            """
+            f"""
             ╟───────────────────────────┬───────────────────────────╢
-            ║ Firmware & API:           │ Touchscreen GUI:          ║
+            ║ {_("install_menu.firmware_api"):<24} │ {_("install_menu.touchscreen_gui"):<24} ║
             ║  1) [Klipper]             │  7) [KlipperScreen]       ║
             ║  2) [Moonraker]           │                           ║
-            ║                           │ Webcam Streamer:          ║
-            ║ Webinterface:             │  8) [Crowsnest]           ║
+            ║                           │ {_("install_menu.webcam_streamer"):<24} ║
+            ║ {_("install_menu.webinterface"):<24} │  8) [Crowsnest]           ║
             ║  3) [Mainsail]            │                           ║
             ║  4) [Fluidd]              │                           ║
             ║                           │                           ║
-            ║ Client-Config:            │                           ║
+            ║ {_("install_menu.client_config"):<24} │                           ║
             ║  5) [Mainsail-Config]     │                           ║
             ║  6) [Fluidd-Config]       │                           ║
             ╟───────────────────────────┴───────────────────────────╢

@@ -23,6 +23,7 @@ from components.webui_client.client_utils import (
 )
 from components.webui_client.fluidd_data import FluiddData
 from components.webui_client.mainsail_data import MainsailData
+from core.i18n import _
 from core.logger import Logger
 from core.menus import FooterType
 from core.menus.advanced_menu import AdvancedMenu
@@ -33,7 +34,7 @@ from core.menus.remove_menu import RemoveMenu
 from core.menus.settings_menu import SettingsMenu
 from core.menus.update_menu import UpdateMenu
 from core.types.color import Color
-from core.types.component_status import ComponentStatus, StatusMap, StatusText
+from core.types.component_status import ComponentStatus, StatusMap
 from extensions.extensions_menu import ExtensionsMenu
 from utils.common import get_kiauh_version, trunc_string
 
@@ -45,7 +46,7 @@ class MainMenu(BaseMenu):
         super().__init__()
 
         self.header: bool = True
-        self.title = "Main Menu"
+        self.title = _("main_menu.title")
         self.title_color = Color.CYAN
         self.footer_type: FooterType = FooterType.QUIT
 
@@ -78,7 +79,7 @@ class MainMenu(BaseMenu):
             setattr(
                 self,
                 f"{var}_status",
-                Color.apply("Not installed", Color.RED),
+                Color.apply(_("status.not_installed"), Color.RED),
             )
 
     def _fetch_status(self) -> None:
@@ -94,9 +95,9 @@ class MainMenu(BaseMenu):
     def _get_component_status(self, name: str, status_fn: Callable, *args) -> None:
         status_data: ComponentStatus = status_fn(*args)
         code: int = status_data.status
-        status: StatusText = StatusMap[code]
-        owner: str = trunc_string(status_data.owner, 23) if status_data.owner else '-'
-        repo: str = trunc_string(status_data.repo, 23) if status_data.repo else '-'
+        status: str = _(StatusMap[code])
+        owner: str = trunc_string(status_data.owner, 23) if status_data.owner else "-"
+        repo: str = trunc_string(status_data.repo, 23) if status_data.repo else "-"
         instance_count: int = status_data.instances
 
         count_txt: str = ""
@@ -123,26 +124,26 @@ class MainMenu(BaseMenu):
 
         footer1 = Color.apply(self.version, Color.CYAN)
         link = Color.apply("https://git.io/JnmlX", Color.MAGENTA)
-        footer2 = f"Changelog: {link}"
+        footer2 = f"{_('main_menu.changelog')}: {link}"
         pad1 = 32
         pad2 = 26
         menu = textwrap.dedent(
             f"""
             ╟──────────────────┬────────────────────────────────────╢
-            ║  0) [Log-Upload] │   Klipper: {self.kl_status:<{pad1}} ║
-            ║                  │     Owner: {self.kl_owner:<{pad1}} ║
-            ║  1) [Install]    │      Repo: {self.kl_repo:<{pad1}} ║
-            ║  2) [Update]     ├────────────────────────────────────╢
-            ║  3) [Remove]     │ Moonraker: {self.mr_status:<{pad1}} ║
-            ║  4) [Advanced]   │     Owner: {self.mr_owner:<{pad1}} ║
-            ║  5) [Backup]     │      Repo: {self.mr_repo:<{pad1}} ║
+            ║  0) [{_("main_menu.log_upload")}] │   {_("main_menu.klipper")}: {self.kl_status:<{pad1}} ║
+            ║                  │     {_("common.owner")}: {self.kl_owner:<{pad1}} ║
+            ║  1) [{_("main_menu.install")}]    │      {_("common.repo")}: {self.kl_repo:<{pad1}} ║
+            ║  2) [{_("main_menu.update")}]     ├────────────────────────────────────╢
+            ║  3) [{_("main_menu.remove")}]     │ {_("main_menu.moonraker")}: {self.mr_status:<{pad1}} ║
+            ║  4) [{_("main_menu.advanced")}]   │     {_("common.owner")}: {self.mr_owner:<{pad1}} ║
+            ║  5) [{_("main_menu.backup")}]     │      {_("common.repo")}: {self.mr_repo:<{pad1}} ║
             ║                  ├────────────────────────────────────╢
-            ║  S) [Settings]   │        Mainsail: {self.ms_status:<{pad2}} ║
-            ║                  │          Fluidd: {self.fl_status:<{pad2}} ║
-            ║ Community:       │   Client-Config: {self.cc_status:<{pad2}} ║
-            ║  E) [Extensions] │                                    ║
-            ║                  │   KlipperScreen: {self.ks_status:<{pad2}} ║
-            ║                  │       Crowsnest: {self.cn_status:<{pad2}} ║
+            ║  S) [{_("main_menu.settings")}]   │        {_("main_menu.mainsail")}: {self.ms_status:<{pad2}} ║
+            ║                  │          {_("main_menu.fluidd")}: {self.fl_status:<{pad2}} ║
+            ║ {_("main_menu.community")}:       │   {_("main_menu.client_config")}: {self.cc_status:<{pad2}} ║
+            ║  E) [{_("main_menu.extensions")}] │                                    ║
+            ║                  │   {_("main_menu.klipperscreen")}: {self.ks_status:<{pad2}} ║
+            ║                  │       {_("main_menu.crowsnest")}: {self.cn_status:<{pad2}} ║
             ╟──────────────────┼────────────────────────────────────╢
             ║ {footer1:^25} │ {footer2:^43} ║
             ╟──────────────────┴────────────────────────────────────╢
@@ -151,7 +152,7 @@ class MainMenu(BaseMenu):
         print(menu, end="")
 
     def exit(self, **kwargs) -> None:
-        Logger.print_ok("###### Happy printing!", False)
+        Logger.print_ok(f"###### {_('common.happy_printing')}", False)
         sys.exit(0)
 
     def log_upload_menu(self, **kwargs) -> None:

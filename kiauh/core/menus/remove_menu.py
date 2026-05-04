@@ -20,6 +20,7 @@ from components.moonraker.menus.moonraker_remove_menu import (
 from components.webui_client.fluidd_data import FluiddData
 from components.webui_client.mainsail_data import MainsailData
 from components.webui_client.menus.client_remove_menu import ClientRemoveMenu
+from core.i18n import _
 from core.menus import Option
 from core.menus.base_menu import BaseMenu
 from core.types.color import Color
@@ -30,7 +31,7 @@ from core.types.color import Color
 class RemoveMenu(BaseMenu):
     def __init__(self, previous_menu: Type[BaseMenu] | None = None) -> None:
         super().__init__()
-        self.title = "Remove Menu"
+        self.title = _("remove_menu.title")
         self.title_color = Color.RED
         self.previous_menu: Type[BaseMenu] | None = previous_menu
 
@@ -51,14 +52,14 @@ class RemoveMenu(BaseMenu):
 
     def print_menu(self) -> None:
         menu = textwrap.dedent(
-            """
+            f"""
             ╟───────────────────────────────────────────────────────╢
-            ║ INFO: Configurations and/or any backups will be kept! ║
+            ║ {_("remove_menu.info"):^62} ║
             ╟───────────────────────────┬───────────────────────────╢
-            ║ Firmware & API:           │ Touchscreen GUI:          ║
+            ║ {_("install_menu.firmware_api"):<24} │ {_("install_menu.touchscreen_gui"):<24} ║
             ║  1) [Klipper]             │  5) [KlipperScreen]       ║
             ║  2) [Moonraker]           │                           ║
-            ║                           │ Webcam Streamer:          ║
+            ║                           │ {_("install_menu.webcam_streamer"):<24} ║
             ║ Klipper Webinterface:     │  6) [Crowsnest]           ║
             ║  3) [Mainsail]            │                           ║
             ║  4) [Fluidd]              │                           ║

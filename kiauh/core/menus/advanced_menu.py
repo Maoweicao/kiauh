@@ -24,6 +24,7 @@ from components.klipper_firmware.menus.klipper_flash_menu import (
 )
 from components.moonraker import MOONRAKER_DIR
 from components.moonraker.moonraker import Moonraker
+from core.i18n import _
 from core.menus import Option
 from core.menus.base_menu import BaseMenu
 from core.types.color import Color
@@ -36,7 +37,7 @@ from utils.git_utils import rollback_repository
 class AdvancedMenu(BaseMenu):
     def __init__(self, previous_menu: Type[BaseMenu] | None = None) -> None:
         super().__init__()
-        self.title = "Advanced Menu"
+        self.title = _("advanced_menu.title")
         self.title_color = Color.YELLOW
         self.previous_menu: Type[BaseMenu] | None = previous_menu
 
@@ -59,16 +60,16 @@ class AdvancedMenu(BaseMenu):
 
     def print_menu(self) -> None:
         menu = textwrap.dedent(
-            """
+            f"""
             ╟───────────────────────────┬───────────────────────────╢
-            ║ Klipper Firmware:         │ Repository Rollback:      ║
-            ║  1) [Build]               │  6) [Klipper]             ║
-            ║  2) [Flash]               │  7) [Moonraker]           ║
-            ║  3) [Build + Flash]       │                           ║
-            ║  4) [Get MCU ID]          │ System:                   ║
-            ║                           │  8) [Change hostname]     ║
-            ║ Extra Dependencies:       │                           ║
-            ║  5) [Input Shaper]        │                           ║
+            ║ {_("advanced_menu.klipper_firmware"):<24} │ {_("advanced_menu.repository_rollback"):<24} ║
+            ║  1) [{_("advanced_menu.build")}]               │  6) [Klipper]             ║
+            ║  2) [{_("advanced_menu.flash")}]               │  7) [Moonraker]           ║
+            ║  3) [{_("advanced_menu.build_flash")}]       │                           ║
+            ║  4) [{_("advanced_menu.get_mcu_id")}]          │ System:                   ║
+            ║                           │  8) [{_("advanced_menu.change_hostname")}]     ║
+            ║ {_("advanced_menu.extra_deps"):<24} │                           ║
+            ║  5) [{_("advanced_menu.input_shaper")}]        │                           ║
             ╟───────────────────────────┴───────────────────────────╢
             """
         )[1:]

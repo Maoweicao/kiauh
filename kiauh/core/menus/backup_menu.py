@@ -23,6 +23,7 @@ from components.webui_client.client_utils import (
 )
 from components.webui_client.fluidd_data import FluiddData
 from components.webui_client.mainsail_data import MainsailData
+from core.i18n import _
 from core.menus import Option
 from core.menus.base_menu import BaseMenu
 from core.services.backup_service import BackupService
@@ -34,7 +35,7 @@ from core.types.color import Color
 class BackupMenu(BaseMenu):
     def __init__(self, previous_menu: Type[BaseMenu] | None = None) -> None:
         super().__init__()
-        self.title = "Backup Menu"
+        self.title = _("backup_menu.title")
         self.title_color = Color.GREEN
         self.previous_menu: Type[BaseMenu] | None = previous_menu
 
@@ -57,21 +58,19 @@ class BackupMenu(BaseMenu):
         }
 
     def print_menu(self) -> None:
-        line1 = Color.apply(
-            "INFO: Backups are located in '~/kiauh_backups'", Color.YELLOW
-        )
+        line1 = Color.apply(_("backup_menu.info"), Color.YELLOW)
         menu = textwrap.dedent(
             f"""
             ╟───────────────────────────────────────────────────────╢
             ║ {line1:^62} ║
             ╟───────────────────────────┬───────────────────────────╢
-            ║ Klipper & Moonraker API:  │ Client-Config:            ║
+            ║ {_("backup_menu.klipper_moonraker_api"):<24} │ {_("install_menu.client_config"):<24} ║
             ║  1) [Klipper]             │  7) [Mainsail-Config]     ║
             ║  2) [Moonraker]           │  8) [Fluidd-Config]       ║
-            ║  3) [Config Folder]       │                           ║
-            ║  4) [Moonraker Database]  │ Touchscreen GUI:          ║
+            ║  3) [{_("backup_menu.config_folder")}]       │                           ║
+            ║  4) [{_("backup_menu.moonraker_database")}]  │ {_("backup_menu.touchscreen_gui"):<24} ║
             ║                           │  9) [KlipperScreen]       ║
-            ║ Webinterface:             │                           ║
+            ║ {_("backup_menu.webinterface"):<24} │                           ║
             ║  5) [Mainsail]            │                           ║
             ║  6) [Fluidd]              │                           ║
             ╟───────────────────────────┴───────────────────────────╢
