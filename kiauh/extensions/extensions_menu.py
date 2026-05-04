@@ -15,6 +15,7 @@ import textwrap
 from pathlib import Path
 from typing import Dict, List, Type
 
+from core.i18n import _
 from core.logger import Logger
 from core.menus import Option
 from core.menus.base_menu import BaseMenu
@@ -110,7 +111,7 @@ class ExtensionsMenu(BaseMenu):
         ExtensionSubmenu(kwargs.get("opt_data"), self.__class__).run()
 
     def print_menu(self) -> None:
-        line1 = Color.apply("Available Extensions:", Color.YELLOW)
+        line1 = Color.apply(_("repo_select_menu.available_repos"), Color.YELLOW)
         menu = textwrap.dedent(
             f"""
             ╟───────────────────────────────────────────────────────╢

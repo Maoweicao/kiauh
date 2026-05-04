@@ -10,6 +10,7 @@
 from pathlib import Path
 from subprocess import PIPE, CalledProcessError, run
 
+from core.i18n import _
 from core.logger import DialogType, Logger
 from utils.common import check_install_dependencies, get_current_date
 from utils.fs_utils import check_file_exist
@@ -17,16 +18,10 @@ from utils.input_utils import get_confirm, get_string_input
 
 
 def change_system_hostname() -> None:
-    """
-    Procedure to change the system hostname.
-    :return:
-    """
-
     Logger.print_dialog(
         DialogType.CUSTOM,
         [
-            "Changing the hostname of this system allows you to access an installed "
-            "webinterface by simply typing the hostname like this in the browser:",
+            _("component.hostname_desc"),
             "\n\n",
             "http://<hostname>.local",
             "\n\n",
@@ -34,15 +29,15 @@ def change_system_hostname() -> None:
             "installed webinterface by typing 'http://my-printer.local' in the "
             "browser.",
         ],
-        custom_title="CHANGE SYSTEM HOSTNAME",
+        custom_title=_("component.hostname_title"),
     )
-    if not get_confirm("Do you want to change the hostname?", default_choice=False):
+    if not get_confirm(_("component.hostname_confirm"), default_choice=False):
         return
 
     Logger.print_dialog(
         DialogType.CUSTOM,
         [
-            "Allowed characters: a-z, 0-9 and '-'",
+            _("component.hostname_rules"),
             "The name must not contain the following:",
             "\n\n",
             "● Any special characters",
@@ -50,21 +45,22 @@ def change_system_hostname() -> None:
         ],
     )
     hostname = get_string_input(
-        "Enter the new hostname",
+        _("component.hostname_enter"),
         regex=r"^[a-z0-9]+([a-z0-9-]*[a-z0-9])?$",
     )
-    if not get_confirm(f"Change the hostname to '{hostname}'?", default_choice=False):
-        Logger.print_info("Aborting hostname change ...")
+    if not get_confirm(
+        _("component.hostname_change_confirm", name=hostname), default_choice=False
+    ):
+        Logger.print_info(_("component.hostname_abort"))
         return
 
     try:
-        Logger.print_status("Changing hostname ...")
+        Logger.print_status(_("component.hostname_changing"))
 
-        Logger.print_status("Checking for dependencies ...")
+        Logger.print_status(_("component.hostname_checking_deps"))
         check_install_dependencies({"avahi-daemon"}, include_global=False)
 
-        # create or backup hosts file
-        Logger.print_status("Creating backup of hosts file ...")
+        Logger.print_status(_("component.hostname_backup_hosts"))
         hosts_file = Path("/etc/hosts")
         if not check_file_exist(hosts_file, True):
             cmd = ["sudo", "touch", hosts_file.as_posix()]
@@ -82,22 +78,20 @@ def change_system_hostname() -> None:
             run(cmd, stderr=PIPE, check=True)
         Logger.print_ok()
 
-        # call hostnamectl set-hostname <hostname>
-        Logger.print_status(f"Setting hostname to '{hostname}' ...")
+        Logger.print_status(_("component.hostname_setting", name=hostname))
         cmd = ["sudo", "hostnamectl", "set-hostname", hostname]
         run(cmd, stderr=PIPE, check=True)
         Logger.print_ok()
 
-        # add hostname to hosts file at the end of the file
-        Logger.print_status("Writing new hostname to /etc/hosts ...")
+        Logger.print_status(_("component.hostname_writing"))
         stdin = f"127.0.0.1       {hostname}\n"
         cmd = ["sudo", "tee", "-a", hosts_file.as_posix()]
         run(cmd, input=stdin.encode(), stderr=PIPE, stdout=PIPE, check=True)
         Logger.print_ok()
 
-        Logger.print_ok("New hostname successfully configured!")
-        Logger.print_ok("Remember to reboot for the changes to take effect!\n")
+        Logger.print_ok(_("component.hostname_success"))
+        Logger.print_ok(_("component.hostname_reboot"))
 
     except CalledProcessError as e:
-        Logger.print_error(f"Error during change hostname procedure: {e}")
+        Logger.print_error(_("component.hostname_error", error=str(e)))
         return
