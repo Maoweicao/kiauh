@@ -1,0 +1,2736 @@
+From 600bf209fd08d32ba22a887bd360ec3523551b15 Mon Sep 17 00:00:00 2001
+From: Maoweicao <Maoweicao@users.noreply.github.com>
+Date: Mon, 4 May 2026 18:59:38 +0800
+Subject: [PATCH 8/8] fix(i18n): CJK-aware terminal width, lazy input label,
+ realtime language switch
+
+- Add display_width(), wc_ljust(), wc_center() to core.i18n for CJK alignment
+- Rewrite base_menu.py header/footer/title to use CJK-aware centering
+- Make input_label_txt lazy (evaluated in __post_init__ after i18n loaded)
+- Rewrite main_menu.py columns to use wc_ljust() for proper CJK alignment
+- Add reload_i18n() for instant language switch in settings without restart
+---
+ kiauh/core/i18n/__init__.py                   |  44 +
+ kiauh/core/menus/base_menu.py                 |  53 +-
+ kiauh/core/menus/main_menu.py                 |  36 +-
+ kiauh/core/menus/settings_menu.py             |   3 +-
+ ...eat-i18n-add-core-translation-engine.patch | 147 ++++
+ ...translation-files-for-en-zh_CN-de-ja.patch | 813 ++++++++++++++++++
+ ...ate-language-settings-into-KIAUH-con.patch | 177 ++++
+ ...t-core-UI-infrastructure-to-use-tran.patch | 214 +++++
+ ...t-all-menu-files-to-use-translations.patch | 777 +++++++++++++++++
+ ...t-extension-menu-and-system-procedur.patch | 225 +++++
+ ...duplicate-closing-brace-from-en.json.patch |  23 +
+ 11 files changed, 2476 insertions(+), 36 deletions(-)
+ create mode 100644 patches/0001-feat-i18n-add-core-translation-engine.patch
+ create mode 100644 patches/0002-feat-i18n-add-translation-files-for-en-zh_CN-de-ja.patch
+ create mode 100644 patches/0003-feat-i18n-integrate-language-settings-into-KIAUH-con.patch
+ create mode 100644 patches/0004-feat-i18n-convert-core-UI-infrastructure-to-use-tran.patch
+ create mode 100644 patches/0005-feat-i18n-convert-all-menu-files-to-use-translations.patch
+ create mode 100644 patches/0006-feat-i18n-convert-extension-menu-and-system-procedur.patch
+ create mode 100644 patches/0007-fix-i18n-remove-duplicate-closing-brace-from-en.json.patch
+
+diff --git a/kiauh/core/i18n/__init__.py b/kiauh/core/i18n/__init__.py
+index eb9324b..b891421 100644
+--- a/kiauh/core/i18n/__init__.py
++++ b/kiauh/core/i18n/__init__.py
+@@ -9,6 +9,7 @@
+ from __future__ import annotations
+ 
+ import locale
++import unicodedata
+ 
+ from .translation import TranslationManager
+ 
+@@ -37,6 +38,12 @@ def init_i18n(settings_lang: str | None = None) -> str:
+     return _i18n.current_language
+ 
+ 
++def reload_i18n(lang: str) -> str:
++    """Reload translations immediately (for in-session language switch)."""
++    _i18n.load_language(lang)
++    return _i18n.current_language
++
++
+ def get_current_language() -> str:
+     return _i18n.current_language
+ 
+@@ -44,3 +51,40 @@ def get_current_language() -> str:
+ def get_available_languages() -> dict[str, str]:
+     """Returns {lang_code: display_name} for all available translations."""
+     return _i18n.available_languages
++
++
++def display_width(text: str) -> int:
++    """Return the terminal display width of a string.
++
++    CJK characters (Chinese, Japanese, Korean) take 2 columns,
++    ASCII/Latin characters take 1 column.
++    """
++    width = 0
++    for ch in text:
++        if isinstance(ch, str) and len(ch) == 1:
++            ea = unicodedata.east_asian_width(ch)
++            if ea in ("W", "F"):
++                width += 2
++            else:
++                width += 1
++        else:
++            width += len(ch)
++    return width
++
++
++def wc_ljust(text: str, width: int) -> str:
++    """Left-justify text within given display width, accounting for CJK."""
++    dw = display_width(text)
++    if dw >= width:
++        return text
++    return text + " " * (width - dw)
++
++
++def wc_center(text: str, width: int, fillchar: str = " ") -> str:
++    """Center text within given display width, accounting for CJK."""
++    dw = display_width(text)
++    if dw >= width:
++        return text
++    left = (width - dw) // 2
++    right = width - dw - left
++    return fillchar * left + text + fillchar * right
+diff --git a/kiauh/core/menus/base_menu.py b/kiauh/core/menus/base_menu.py
+index 4083eb2..d59c7c7 100644
+--- a/kiauh/core/menus/base_menu.py
++++ b/kiauh/core/menus/base_menu.py
+@@ -17,7 +17,7 @@ from abc import abstractmethod
+ from enum import Enum
+ from typing import Dict, Type
+ 
+-from core.i18n import _
++from core.i18n import _, display_width, wc_center
+ from core.logger import Logger
+ from core.menus import FooterType, Option
+ from core.services.message_service import MessageService
+@@ -31,17 +31,17 @@ def clear() -> None:
+ 
+ 
+ def print_header() -> None:
+-    line1 = f" [ {_('header.title')} ] "
+-    line2 = _("header.subtitle")
+-    line3 = ""
+     color = Color.CYAN
+-    count = 62 - len(str(color)) - len(str(Color.RST))
++    count = 62 - display_width(str(color)) - display_width(str(Color.RST))
++    line1 = wc_center(f" [ {_('header.title')} ] ", count, "~")
++    line2 = wc_center(_("header.subtitle"), count)
++    line3 = wc_center("", count, "~")
+     header = textwrap.dedent(
+         f"""
+         ╔═══════════════════════════════════════════════════════╗
+-        ║ {Color.apply(f"{line1:~^{count}}", color)} ║
+-        ║ {Color.apply(f"{line2:^{count}}", color)} ║
+-        ║ {Color.apply(f"{line3:~^{count}}", color)} ║
++        ║ {Color.apply(line1, color)} ║
++        ║ {Color.apply(line2, color)} ║
++        ║ {Color.apply(line3, color)} ║
+         ╚═══════════════════════════════════════════════════════╝
+         """
+     )[1:]
+@@ -51,10 +51,11 @@ def print_header() -> None:
+ def print_quit_footer() -> None:
+     text = _("common.quit")
+     color = Color.RED
+-    count = 62 - len(str(color)) - len(str(Color.RST))
++    count = 62 - display_width(str(color)) - display_width(str(Color.RST))
++    centered = wc_center(text, count)
+     footer = textwrap.dedent(
+         f"""
+-        ║ {color}{text:^{count}}{Color.RST} ║
++        ║ {color}{centered}{Color.RST} ║
+         ╚═══════════════════════════════════════════════════════╝
+         """
+     )[1:]
+@@ -64,10 +65,11 @@ def print_quit_footer() -> None:
+ def print_back_footer() -> None:
+     text = _("common.back")
+     color = Color.GREEN
+-    count = 62 - len(str(color)) - len(str(Color.RST))
++    count = 62 - display_width(str(color)) - display_width(str(Color.RST))
++    centered = wc_center(text, count)
+     footer = textwrap.dedent(
+         f"""
+-        ║ {color}{text:^{count}}{Color.RST} ║
++        ║ {color}{centered}{Color.RST} ║
+         ╚═══════════════════════════════════════════════════════╝
+         """
+     )[1:]
+@@ -79,10 +81,12 @@ def print_back_help_footer() -> None:
+     text2 = _("common.help")
+     color1 = Color.GREEN
+     color2 = Color.YELLOW
+-    count = 34 - len(str(color1)) - len(str(Color.RST))
++    count = 34 - display_width(str(color1)) - display_width(str(Color.RST))
++    centered1 = wc_center(text1, count)
++    centered2 = wc_center(text2, count)
+     footer = textwrap.dedent(
+         f"""
+-        ║ {color1}{text1:^{count}}{Color.RST} │ {color2}{text2:^{count}}{Color.RST} ║
++        ║ {color1}{centered1}{Color.RST} │ {color2}{centered2}{Color.RST} ║
+         ╚═══════════════════════════╧═══════════════════════════╝
+         """
+     )[1:]
+@@ -111,7 +115,7 @@ class BaseMenu(metaclass=PostInitCaller):
+     options: Dict[str, Option] = {}
+     options_offset: int = 0
+     default_option: Option = None
+-    input_label_txt: str = "Perform action"
++    input_label_txt: str = ""
+     header: bool = False
+ 
+     loading_msg: str = ""
+@@ -135,7 +139,9 @@ class BaseMenu(metaclass=PostInitCaller):
+         self.set_previous_menu(self.previous_menu)
+         self.set_options()
+ 
+-        # conditionally add options based on footer type
++        if not self.input_label_txt:
++            self.input_label_txt = _("common.perform_action")
++
+         if self.footer_type is FooterType.QUIT:
+             self.options["q"] = Option(method=self.__exit)
+         if self.footer_type is FooterType.BACK:
+@@ -143,7 +149,6 @@ class BaseMenu(metaclass=PostInitCaller):
+         if self.footer_type is FooterType.BACK_HELP:
+             self.options["b"] = Option(method=self.__go_back)
+             self.options["h"] = Option(method=self.__go_to_help)
+-        # if defined, add the default option to the options dict
+         if self.default_option is not None:
+             self.options[""] = self.default_option
+ 
+@@ -182,18 +187,20 @@ class BaseMenu(metaclass=PostInitCaller):
+             self.spinner = None
+ 
+     def __print_menu_title(self) -> None:
+-        count = 62 - len(str(self.title_color)) - len(str(Color.RST))
++        count = (
++            62 - display_width(str(self.title_color)) - display_width(str(Color.RST))
++        )
+         menu_title = "╔═══════════════════════════════════════════════════════╗\n"
+         if self.title:
+-            title = (
++            title_raw = (
+                 f" [ {self.title} ] "
+                 if self.title_style == MenuTitleStyle.STYLED
+                 else self.title
+             )
+-            line = (
+-                f"{title:~^{count}}"
+-                if self.title_style == MenuTitleStyle.STYLED
+-                else f"{title:^{count}}"
++            line = wc_center(
++                title_raw,
++                count,
++                "~" if self.title_style == MenuTitleStyle.STYLED else " ",
+             )
+             menu_title += f"║ {Color.apply(line, self.title_color)} ║\n"
+         print(menu_title, end="")
+diff --git a/kiauh/core/menus/main_menu.py b/kiauh/core/menus/main_menu.py
+index cc7b907..cb7d561 100644
+--- a/kiauh/core/menus/main_menu.py
++++ b/kiauh/core/menus/main_menu.py
+@@ -23,7 +23,7 @@ from components.webui_client.client_utils import (
+ )
+ from components.webui_client.fluidd_data import FluiddData
+ from components.webui_client.mainsail_data import MainsailData
+-from core.i18n import _
++from core.i18n import _, wc_ljust
+ from core.logger import Logger
+ from core.menus import FooterType
+ from core.menus.advanced_menu import AdvancedMenu
+@@ -127,23 +127,35 @@ class MainMenu(BaseMenu):
+         footer2 = f"{_('main_menu.changelog')}: {link}"
+         pad1 = 32
+         pad2 = 26
++
++        # Build right-column cells with CJK-aware left-justify
++        kl_label = _("main_menu.klipper")
++        mr_label = _("main_menu.moonraker")
++        ms_label = _("main_menu.mainsail")
++        fl_label = _("main_menu.fluidd")
++        cc_label = _("main_menu.client_config")
++        ks_label = _("main_menu.klipperscreen")
++        cn_label = _("main_menu.crowsnest")
++        owner_label = _("common.owner")
++        repo_label = _("common.repo")
++
+         menu = textwrap.dedent(
+             f"""
+             ╟──────────────────┬────────────────────────────────────╢
+-            ║  0) [{_("main_menu.log_upload")}] │   {_("main_menu.klipper")}: {self.kl_status:<{pad1}} ║
+-            ║                  │     {_("common.owner")}: {self.kl_owner:<{pad1}} ║
+-            ║  1) [{_("main_menu.install")}]    │      {_("common.repo")}: {self.kl_repo:<{pad1}} ║
++            ║  0) [{_("main_menu.log_upload")}] │   {wc_ljust(f"{kl_label}: {self.kl_status}", pad1)} ║
++            ║                  │     {wc_ljust(f"{owner_label}: {self.kl_owner}", pad1)} ║
++            ║  1) [{_("main_menu.install")}]    │      {wc_ljust(f"{repo_label}: {self.kl_repo}", pad1)} ║
+             ║  2) [{_("main_menu.update")}]     ├────────────────────────────────────╢
+-            ║  3) [{_("main_menu.remove")}]     │ {_("main_menu.moonraker")}: {self.mr_status:<{pad1}} ║
+-            ║  4) [{_("main_menu.advanced")}]   │     {_("common.owner")}: {self.mr_owner:<{pad1}} ║
+-            ║  5) [{_("main_menu.backup")}]     │      {_("common.repo")}: {self.mr_repo:<{pad1}} ║
++            ║  3) [{_("main_menu.remove")}]     │ {wc_ljust(f"{mr_label}: {self.mr_status}", pad1)} ║
++            ║  4) [{_("main_menu.advanced")}]   │     {wc_ljust(f"{owner_label}: {self.mr_owner}", pad1)} ║
++            ║  5) [{_("main_menu.backup")}]     │      {wc_ljust(f"{repo_label}: {self.mr_repo}", pad1)} ║
+             ║                  ├────────────────────────────────────╢
+-            ║  S) [{_("main_menu.settings")}]   │        {_("main_menu.mainsail")}: {self.ms_status:<{pad2}} ║
+-            ║                  │          {_("main_menu.fluidd")}: {self.fl_status:<{pad2}} ║
+-            ║ {_("main_menu.community")}:       │   {_("main_menu.client_config")}: {self.cc_status:<{pad2}} ║
++            ║  S) [{_("main_menu.settings")}]   │        {wc_ljust(f"{ms_label}: {self.ms_status}", pad2)} ║
++            ║                  │          {wc_ljust(f"{fl_label}: {self.fl_status}", pad2)} ║
++            ║ {_("main_menu.community")}:       │   {wc_ljust(f"{cc_label}: {self.cc_status}", pad2)} ║
+             ║  E) [{_("main_menu.extensions")}] │                                    ║
+-            ║                  │   {_("main_menu.klipperscreen")}: {self.ks_status:<{pad2}} ║
+-            ║                  │       {_("main_menu.crowsnest")}: {self.cn_status:<{pad2}} ║
++            ║                  │   {wc_ljust(f"{ks_label}: {self.ks_status}", pad2)} ║
++            ║                  │       {wc_ljust(f"{cn_label}: {self.cn_status}", pad2)} ║
+             ╟──────────────────┼────────────────────────────────────╢
+             ║ {footer1:^25} │ {footer2:^43} ║
+             ╟──────────────────┴────────────────────────────────────╢
+diff --git a/kiauh/core/menus/settings_menu.py b/kiauh/core/menus/settings_menu.py
+index f5607d4..d5b72d2 100644
+--- a/kiauh/core/menus/settings_menu.py
++++ b/kiauh/core/menus/settings_menu.py
+@@ -13,7 +13,7 @@ from typing import Type
+ 
+ from components.klipper.klipper_utils import get_klipper_status
+ from components.moonraker.utils.utils import get_moonraker_status
+-from core.i18n import _, get_available_languages
++from core.i18n import _, get_available_languages, reload_i18n
+ from core.logger import DialogType, Logger
+ from core.menus import Option
+ from core.menus.base_menu import BaseMenu
+@@ -184,6 +184,7 @@ class SettingsMenu(BaseMenu):
+         self.current_language = selected_lang
+         self.settings.kiauh.language = selected_lang
+         self.settings.save()
++        reload_i18n(selected_lang)
+         Logger.print_ok(
+             _("settings_menu.language_changed", name=lang_map[selected_lang])
+         )
+diff --git a/patches/0001-feat-i18n-add-core-translation-engine.patch b/patches/0001-feat-i18n-add-core-translation-engine.patch
+new file mode 100644
+index 0000000..cbf985c
+--- /dev/null
++++ b/patches/0001-feat-i18n-add-core-translation-engine.patch
+@@ -0,0 +1,147 @@
++From 39d96db551609452dba763ec2d1794cdaf7d3ed7 Mon Sep 17 00:00:00 2001
++From: Maoweicao <Maoweicao@users.noreply.github.com>
++Date: Mon, 4 May 2026 18:25:44 +0800
++Subject: [PATCH 1/7] feat(i18n): add core translation engine
++
++- Add TranslationManager singleton with JSON-based locale loading
++- Add init_i18n() with priority: KIAUH_LANG env >  > settings > en fallback
++- Add _() translation function with format string support
++- Add get_available_languages() and get_current_language() helpers
++---
++ kiauh/core/i18n/__init__.py    | 46 ++++++++++++++++++++++
++ kiauh/core/i18n/translation.py | 70 ++++++++++++++++++++++++++++++++++
++ 2 files changed, 116 insertions(+)
++ create mode 100644 kiauh/core/i18n/__init__.py
++ create mode 100644 kiauh/core/i18n/translation.py
++
++diff --git a/kiauh/core/i18n/__init__.py b/kiauh/core/i18n/__init__.py
++new file mode 100644
++index 0000000..eb9324b
++--- /dev/null
+++++ b/kiauh/core/i18n/__init__.py
++@@ -0,0 +1,46 @@
+++# ======================================================================= #
+++#  Copyright (C) 2020 - 2026 Dominik Willner <th33xitus@gmail.com>        #
+++#                                                                         #
+++#  This file is part of KIAUH - Klipper Installation And Update Helper    #
+++#  https://github.com/dw-0/kiauh                                          #
+++#                                                                         #
+++#  This file may be distributed under the terms of the GNU GPLv3 license  #
+++# ======================================================================= #
+++from __future__ import annotations
+++
+++import locale
+++
+++from .translation import TranslationManager
+++
+++_i18n = TranslationManager()
+++
+++
+++def _(key: str, *args, **kwargs) -> str:
+++    return _i18n.translate(key, *args, **kwargs)
+++
+++
+++def init_i18n(settings_lang: str | None = None) -> str:
+++    import os
+++
+++    lang = os.environ.get("KIAUH_LANG")
+++    if not lang:
+++        try:
+++            lang, _ = locale.getdefaultlocale()
+++        except ValueError:
+++            pass
+++    if not lang and settings_lang:
+++        lang = settings_lang
+++    if not lang:
+++        lang = "en"
+++
+++    _i18n.load_language(lang)
+++    return _i18n.current_language
+++
+++
+++def get_current_language() -> str:
+++    return _i18n.current_language
+++
+++
+++def get_available_languages() -> dict[str, str]:
+++    """Returns {lang_code: display_name} for all available translations."""
+++    return _i18n.available_languages
++diff --git a/kiauh/core/i18n/translation.py b/kiauh/core/i18n/translation.py
++new file mode 100644
++index 0000000..c38b668
++--- /dev/null
+++++ b/kiauh/core/i18n/translation.py
++@@ -0,0 +1,70 @@
+++# ======================================================================= #
+++#  Copyright (C) 2020 - 2026 Dominik Willner <th33xitus@gmail.com>        #
+++#                                                                         #
+++#  This file is part of KIAUH - Klipper Installation And Update Helper    #
+++#  https://github.com/dw-0/kiauh                                          #
+++#                                                                         #
+++#  This file may be distributed under the terms of the GNU GPLv3 license  #
+++# ======================================================================= =
+++from __future__ import annotations
+++
+++import json
+++from pathlib import Path
+++from typing import Any, Dict
+++
+++LOCALES_DIR = Path(__file__).resolve().parent / "locales"
+++
+++
+++class TranslationManager:
+++    def __init__(self) -> None:
+++        self.current_language: str = "en"
+++        self._translations: Dict[str, Any] = {}
+++        self._available_languages: Dict[str, str] = {}
+++        self._load_available_languages()
+++
+++    def _load_available_languages(self) -> None:
+++        if not LOCALES_DIR.is_dir():
+++            return
+++        for f in sorted(LOCALES_DIR.glob("*.json")):
+++            lang_code = f.stem
+++            try:
+++                with open(f, "r", encoding="utf-8") as fh:
+++                    data = json.load(fh)
+++                display_name = data.get("meta", {}).get("language", lang_code)
+++                self._available_languages[lang_code] = display_name
+++            except (json.JSONDecodeError, OSError):
+++                continue
+++
+++    @property
+++    def available_languages(self) -> Dict[str, str]:
+++        return dict(self._available_languages)
+++
+++    def load_language(self, lang: str) -> None:
+++        lang_code = lang.split(".")[0].split("_")[0] if "_" in lang else lang
+++        locale_file = LOCALES_DIR / f"{lang}.json"
+++        if not locale_file.exists():
+++            locale_file = LOCALES_DIR / f"{lang_code}.json"
+++        if not locale_file.exists():
+++            locale_file = LOCALES_DIR / "en.json"
+++
+++        self.current_language = lang
+++        try:
+++            with open(locale_file, "r", encoding="utf-8") as fh:
+++                data = json.load(fh)
+++            self._translations = data.get("strings", {})
+++        except (json.JSONDecodeError, OSError):
+++            self._translations = {}
+++
+++    def translate(self, key: str, *args, **kwargs) -> str:
+++        value = self._translations.get(key, key)
+++        if args:
+++            try:
+++                value = value % args
+++            except TypeError:
+++                pass
+++        if kwargs:
+++            try:
+++                value = value.format(**kwargs)
+++            except (KeyError, ValueError):
+++                pass
+++        return value
++-- 
++2.52.0.windows.1
++
+diff --git a/patches/0002-feat-i18n-add-translation-files-for-en-zh_CN-de-ja.patch b/patches/0002-feat-i18n-add-translation-files-for-en-zh_CN-de-ja.patch
+new file mode 100644
+index 0000000..8e1a0b5
+--- /dev/null
++++ b/patches/0002-feat-i18n-add-translation-files-for-en-zh_CN-de-ja.patch
+@@ -0,0 +1,813 @@
++From d7e180b565de4953ca8a6aeed361dedbbb063105 Mon Sep 17 00:00:00 2001
++From: Maoweicao <Maoweicao@users.noreply.github.com>
++Date: Mon, 4 May 2026 18:25:54 +0800
++Subject: [PATCH 2/7] feat(i18n): add translation files for en, zh_CN, de, ja
++
++- en.json: English (base/fallback) with all translation keys
++- zh_CN.json: Simplified Chinese translations
++- de.json: German translations
++- ja.json: Japanese translations
++All translations cover menus, settings, logger labels, common messages, and component dialogs.
++---
++ kiauh/core/i18n/locales/de.json    | 151 ++++++++++++++
++ kiauh/core/i18n/locales/en.json    | 312 +++++++++++++++++++++++++++++
++ kiauh/core/i18n/locales/ja.json    | 151 ++++++++++++++
++ kiauh/core/i18n/locales/zh_CN.json | 151 ++++++++++++++
++ 4 files changed, 765 insertions(+)
++ create mode 100644 kiauh/core/i18n/locales/de.json
++ create mode 100644 kiauh/core/i18n/locales/en.json
++ create mode 100644 kiauh/core/i18n/locales/ja.json
++ create mode 100644 kiauh/core/i18n/locales/zh_CN.json
++
++diff --git a/kiauh/core/i18n/locales/de.json b/kiauh/core/i18n/locales/de.json
++new file mode 100644
++index 0000000..9efb889
++--- /dev/null
+++++ b/kiauh/core/i18n/locales/de.json
++@@ -0,0 +1,151 @@
+++{
+++    "meta": {
+++        "language": "Deutsch",
+++        "author": "KIAUH Community",
+++        "locale": "de"
+++    },
+++    "strings": {
+++        "common.quit": "Q) Beenden",
+++        "common.back": "B) << Zurück",
+++        "common.help": "H) Hilfe [?]",
+++        "common.perform_action": "Aktion ausführen",
+++        "common.happy_printing": "Viel Spaß beim Drucken!",
+++        "common.unexpected_error": "Ein unerwarteter Fehler ist aufgetreten:",
+++        "common.invalid_choice": "Ungültige Auswahl. Bitte wählen Sie einen gültigen Wert.",
+++        "common.input_not_empty": "Eingabe darf nicht leer sein!",
+++        "common.value_reserved": "Dieser Wert wird bereits verwendet oder ist reserviert.",
+++        "common.invalid_option": "Ungültige Option! Bitte wählen Sie eine gültige Option.",
+++        "common.success": "Erfolg!",
+++        "common.not_available": "Nicht verfügbar!",
+++        "common.owner": "Besitzer",
+++        "common.repo": "Repo",
+++        "common.branch": "Branch",
+++        "common.cancel": "Vorgang abgebrochen.",
+++
+++        "logger.info": "[INFO] {msg}",
+++        "logger.ok": "[OK] {msg}",
+++        "logger.warn": "[WARN] {msg}",
+++        "logger.error": "[FEHLER] {msg}",
+++        "logger.status": "\n###### {msg}",
+++
+++        "header.title": "KIAUH",
+++        "header.subtitle": "Klipper Installation und Update Helfer",
+++
+++        "status.installed": "Installiert",
+++        "status.not_installed": "Nicht installiert",
+++        "status.incomplete": "Unvollständig",
+++
+++        "main_menu.title": "Hauptmenü",
+++        "main_menu.log_upload": "Log-Upload",
+++        "main_menu.install": "Installieren",
+++        "main_menu.update": "Aktualisieren",
+++        "main_menu.remove": "Entfernen",
+++        "main_menu.advanced": "Erweitert",
+++        "main_menu.backup": "Backup",
+++        "main_menu.settings": "Einstellungen",
+++        "main_menu.extensions": "Erweiterungen",
+++        "main_menu.community": "Community",
+++        "main_menu.changelog": "Änderungsprotokoll",
+++        "main_menu.klipper": "Klipper",
+++        "main_menu.moonraker": "Moonraker",
+++        "main_menu.mainsail": "Mainsail",
+++        "main_menu.fluidd": "Fluidd",
+++        "main_menu.client_config": "Client-Konfig",
+++        "main_menu.klipperscreen": "KlipperScreen",
+++        "main_menu.crowsnest": "Crowsnest",
+++
+++        "install_menu.title": "Installationsmenü",
+++        "install_menu.firmware_api": "Firmware & API",
+++        "install_menu.touchscreen_gui": "Touchscreen GUI",
+++        "install_menu.webcam_streamer": "Webcam Streamer",
+++        "install_menu.webinterface": "Webinterface",
+++        "install_menu.client_config": "Client-Konfig",
+++
+++        "update_menu.title": "Aktualisierungsmenü",
+++        "update_menu.loading": "Lade Aktualisierungsmenü, bitte warten",
+++        "update_menu.update_all": "a) Alle aktualisieren",
+++        "update_menu.current": "Aktuell",
+++        "update_menu.latest": "Neueste",
+++        "update_menu.klipper_api": "Klipper & API",
+++        "update_menu.other": "Andere",
+++        "update_menu.system": "System",
+++        "update_menu.no_upgrades": "Keine Aktualisierungen verfügbar.",
+++        "update_menu.upgrades_available": "{count} Aktualisierungen verfügbar!",
+++        "update_menu.updating_all": "Aktualisiere alle Komponenten ...",
+++        "update_menu.not_installed": "{name} ist nicht installiert! Übersprungen ...",
+++        "update_menu.up_to_date": "{name} ist bereits aktuell! Übersprungen ...",
+++        "update_menu.no_system_upgrades": "Keine Systemaktualisierungen verfügbar!",
+++        "update_menu.upgradable_title": "VERFÜGBARE SYSTEMAKTUALISIERUNGEN",
+++        "update_menu.following_packages": "Die folgenden Pakete werden aktualisiert:",
+++        "update_menu.upgrade_packages_confirm": "Pakete aktualisieren?",
+++        "update_menu.upgrading_packages": "Aktualisiere Systempakete ...",
+++        "update_menu.error_upgrading": "Fehler beim Aktualisieren der Systempakete:",
+++
+++        "remove_menu.title": "Entfernungsmenü",
+++        "remove_menu.info": "INFO: Konfigurationen und/oder Backups werden behalten!",
+++
+++        "advanced_menu.title": "Erweitertes Menü",
+++        "advanced_menu.klipper_firmware": "Klipper Firmware",
+++        "advanced_menu.repository_rollback": "Repository Rollback",
+++        "advanced_menu.extra_deps": "Zusätzliche Abhängigkeiten",
+++        "advanced_menu.build": "Bauen",
+++        "advanced_menu.flash": "Flashen",
+++        "advanced_menu.build_flash": "Bauen + Flashen",
+++        "advanced_menu.get_mcu_id": "MCU ID ermitteln",
+++        "advanced_menu.input_shaper": "Input Shaper",
+++        "advanced_menu.change_hostname": "Hostname ändern",
+++
+++        "backup_menu.title": "Backup-Menü",
+++        "backup_menu.info": "INFO: Backups befinden sich in '~/kiauh_backups'",
+++        "backup_menu.klipper_moonraker_api": "Klipper & Moonraker API",
+++        "backup_menu.config_folder": "Konfigurationsordner",
+++        "backup_menu.moonraker_database": "Moonraker Datenbank",
+++        "backup_menu.touchscreen_gui": "Touchscreen GUI",
+++        "backup_menu.webinterface": "Webinterface",
+++
+++        "settings_menu.title": "Einstellungen",
+++        "settings_menu.switch_klipper_repo": "Klipper Quell-Repository wechseln",
+++        "settings_menu.switch_moonraker_repo": "Moonraker Quell-Repository wechseln",
+++        "settings_menu.install_unstable": "Instabile Versionen installieren",
+++        "settings_menu.auto_backup": "Auto-Backup",
+++        "settings_menu.backup_before_update": "Backup vor Update",
+++        "settings_menu.language": "Spracheinstellungen",
+++        "settings_menu.select_language": "Oberflächensprache auswählen",
+++        "settings_menu.language_changed": "Sprache geändert zu {name}. KIAUH neu starten zum Übernehmen.",
+++
+++        "repo_select_menu.klipper_title": "Klipper Repository Auswahlmenü",
+++        "repo_select_menu.moonraker_title": "Moonraker Repository Auswahlmenü",
+++        "repo_select_menu.select_repository": "Repository auswählen",
+++        "repo_select_menu.available_repos": "Verfügbare Repositories",
+++        "repo_select_menu.add_repository": "A) Repository hinzufügen",
+++        "repo_select_menu.remove_repository": "R) Repository entfernen",
+++        "repo_select_menu.switching": "Wechsle zur neuen Quell-Repository von {name} ...",
+++        "repo_select_menu.enter_url": "Repository-URL eingeben",
+++        "repo_select_menu.url_note": "HINWEIS: Es gibt keine Eingabevalidierung, bitte überprüfen Sie Ihre Eingabe auf Korrektheit",
+++        "repo_select_menu.enter_branch": "Branch-Namen eingeben",
+++        "repo_select_menu.press_enter_default": "Enter drücken für Standard-Branch (master).",
+++        "repo_select_menu.summary": "Zusammenfassung",
+++        "repo_select_menu.repo_url": "URL",
+++        "repo_select_menu.save_repo": "Repository speichern",
+++        "repo_select_menu.repo_added_saved": "Repository hinzugefügt und gespeichert.",
+++        "repo_select_menu.operation_cancelled": "Vorgang vom Benutzer abgebrochen.",
+++        "repo_select_menu.no_repos": "Keine Repositories konfiguriert.",
+++        "repo_select_menu.select_remove": "Zu entfernendes Repository auswählen",
+++        "repo_select_menu.repo_removed": "Repository entfernt: {url} [{branch}]",
+++        "repo_select_menu.no_repos_warn": "Keine {name} Repositories in kiauh.cfg konfiguriert!",
+++
+++        "settings.no_cfg_found": "Keine KIAUH Konfigurationsdatei gefunden! Bitte stellen Sie sicher, dass mindestens eine der folgenden Konfigurationsdateien im KIAUH Stammverzeichnis vorhanden ist:",
+++        "settings.migration_detected_1": "Veraltete kiauh.cfg Konfiguration gefunden!",
+++        "settings.migration_detected_2": "KIAUH kann nun versuchen, die Konfiguration automatisch zu migrieren.",
+++        "settings.migration_desc_1": "Die Optionen 'repo_url' und 'branch' wurden zur Option 'repositories' zusammengeführt.",
+++        "settings.migration_old_format": "Altes Format",
+++        "settings.migration_new_format": "Neues Format",
+++        "settings.migrate_confirm": "Zum neuen Format migrieren?",
+++        "settings.please_update_manual": "Bitte aktualisieren Sie die Konfigurationsdatei manuell.",
+++        "settings.backup_failed": "Backup von kiauh.cfg konnte nicht erstellt werden. Migration abgebrochen. Bitte manuell migrieren.",
+++        "settings.migrate_success": "{section} Konfiguration erfolgreich migriert",
+++        "settings.error_migrating": "Fehler bei der Konfigurationsmigration:",
+++
+++        "extensions.load_error": "Fehler beim Laden der Erweiterung {name}: {error}"
+++    }
+++}
++diff --git a/kiauh/core/i18n/locales/en.json b/kiauh/core/i18n/locales/en.json
++new file mode 100644
++index 0000000..743c1fe
++--- /dev/null
+++++ b/kiauh/core/i18n/locales/en.json
++@@ -0,0 +1,312 @@
+++{
+++    "meta": {
+++        "language": "English",
+++        "author": "KIAUH Community",
+++        "locale": "en"
+++    },
+++    "strings": {
+++        "common.quit": "Q) Quit",
+++        "common.back": "B) << Back",
+++        "common.help": "H) Help [?]",
+++        "common.perform_action": "Perform action",
+++        "common.happy_printing": "Happy printing!",
+++        "common.unexpected_error": "An unexpected error occurred:",
+++        "common.invalid_choice": "Invalid choice. Please select a valid value.",
+++        "common.input_not_empty": "Input must not be empty!",
+++        "common.value_reserved": "This value is already in use/reserved.",
+++        "common.invalid_option": "Invalid option! Please select a valid option.",
+++        "common.success": "Success!",
+++        "common.not_available": "Not available!",
+++        "common.owner": "Owner",
+++        "common.repo": "Repo",
+++        "common.branch": "Branch",
+++        "common.cancel": "Operation cancelled.",
+++
+++        "logger.info": "[INFO] {msg}",
+++        "logger.ok": "[OK] {msg}",
+++        "logger.warn": "[WARN] {msg}",
+++        "logger.error": "[ERROR] {msg}",
+++        "logger.status": "\n###### {msg}",
+++
+++        "header.title": "KIAUH",
+++        "header.subtitle": "Klipper Installation And Update Helper",
+++
+++        "status.installed": "Installed",
+++        "status.not_installed": "Not installed",
+++        "status.incomplete": "Incomplete",
+++
+++        "main_menu.title": "Main Menu",
+++        "main_menu.log_upload": "Log-Upload",
+++        "main_menu.install": "Install",
+++        "main_menu.update": "Update",
+++        "main_menu.remove": "Remove",
+++        "main_menu.advanced": "Advanced",
+++        "main_menu.backup": "Backup",
+++        "main_menu.settings": "Settings",
+++        "main_menu.extensions": "Extensions",
+++        "main_menu.community": "Community",
+++        "main_menu.changelog": "Changelog",
+++        "main_menu.klipper": "Klipper",
+++        "main_menu.moonraker": "Moonraker",
+++        "main_menu.mainsail": "Mainsail",
+++        "main_menu.fluidd": "Fluidd",
+++        "main_menu.client_config": "Client-Config",
+++        "main_menu.klipperscreen": "KlipperScreen",
+++        "main_menu.crowsnest": "Crowsnest",
+++
+++        "install_menu.title": "Installation Menu",
+++        "install_menu.firmware_api": "Firmware & API",
+++        "install_menu.touchscreen_gui": "Touchscreen GUI",
+++        "install_menu.webcam_streamer": "Webcam Streamer",
+++        "install_menu.webinterface": "Webinterface",
+++        "install_menu.client_config": "Client-Config",
+++
+++        "update_menu.title": "Update Menu",
+++        "update_menu.loading": "Loading update menu, please wait",
+++        "update_menu.update_all": "a) Update all",
+++        "update_menu.current": "Current",
+++        "update_menu.latest": "Latest",
+++        "update_menu.klipper_api": "Klipper & API",
+++        "update_menu.other": "Other",
+++        "update_menu.system": "System",
+++        "update_menu.no_upgrades": "No upgrades available.",
+++        "update_menu.upgrades_available": "{count} upgrades available!",
+++        "update_menu.updating_all": "Updating all components ...",
+++        "update_menu.not_installed": "{name} is not installed! Skipped ...",
+++        "update_menu.up_to_date": "{name} is already up to date! Skipped ...",
+++        "update_menu.no_system_upgrades": "No system upgrades available!",
+++        "update_menu.upgradable_title": "UPGRADABLE SYSTEM UPDATES",
+++        "update_menu.following_packages": "The following packages will be upgraded:",
+++        "update_menu.upgrade_packages_confirm": "Upgrade packages?",
+++        "update_menu.upgrading_packages": "Upgrading system packages ...",
+++        "update_menu.error_upgrading": "Error upgrading system packages:",
+++
+++        "remove_menu.title": "Remove Menu",
+++        "remove_menu.info": "INFO: Configurations and/or any backups will be kept!",
+++
+++        "advanced_menu.title": "Advanced Menu",
+++        "advanced_menu.klipper_firmware": "Klipper Firmware",
+++        "advanced_menu.repository_rollback": "Repository Rollback",
+++        "advanced_menu.extra_deps": "Extra Dependencies",
+++        "advanced_menu.build": "Build",
+++        "advanced_menu.flash": "Flash",
+++        "advanced_menu.build_flash": "Build + Flash",
+++        "advanced_menu.get_mcu_id": "Get MCU ID",
+++        "advanced_menu.input_shaper": "Input Shaper",
+++        "advanced_menu.change_hostname": "Change hostname",
+++
+++        "backup_menu.title": "Backup Menu",
+++        "backup_menu.info": "INFO: Backups are located in '~/kiauh_backups'",
+++        "backup_menu.klipper_moonraker_api": "Klipper & Moonraker API",
+++        "backup_menu.config_folder": "Config Folder",
+++        "backup_menu.moonraker_database": "Moonraker Database",
+++        "backup_menu.touchscreen_gui": "Touchscreen GUI",
+++        "backup_menu.webinterface": "Webinterface",
+++
+++        "settings_menu.title": "Settings Menu",
+++        "settings_menu.switch_klipper_repo": "Switch Klipper source repository",
+++        "settings_menu.switch_moonraker_repo": "Switch Moonraker source repository",
+++        "settings_menu.install_unstable": "Install unstable releases",
+++        "settings_menu.auto_backup": "Auto-Backup",
+++        "settings_menu.backup_before_update": "Backup before update",
+++        "settings_menu.language": "Language",
+++        "settings_menu.select_language": "Select interface language",
+++        "settings_menu.language_changed": "Language changed to {name}. Restart KIAUH to apply.",
+++
+++        "repo_select_menu.klipper_title": "Klipper Repository Selection Menu",
+++        "repo_select_menu.moonraker_title": "Moonraker Repository Selection Menu",
+++        "repo_select_menu.select_repository": "Select repository",
+++        "repo_select_menu.available_repos": "Available Repositories",
+++        "repo_select_menu.add_repository": "A) Add repository",
+++        "repo_select_menu.remove_repository": "R) Remove repository",
+++        "repo_select_menu.switching": "Switching to {name}'s new source repository ...",
+++        "repo_select_menu.enter_url": "Enter the repository URL",
+++        "repo_select_menu.url_note": "NOTE: There is no input validation in place, please check your input for correctness",
+++        "repo_select_menu.enter_branch": "Enter the branch name",
+++        "repo_select_menu.press_enter_default": "Press Enter to use the default branch (master).",
+++        "repo_select_menu.summary": "Summary",
+++        "repo_select_menu.repo_url": "URL",
+++        "repo_select_menu.save_repo": "Save repository",
+++        "repo_select_menu.repo_added_saved": "Repository added and saved.",
+++        "repo_select_menu.operation_cancelled": "Operation cancelled by user.",
+++        "repo_select_menu.no_repos": "No repositories configured.",
+++        "repo_select_menu.select_remove": "Select the repository to remove",
+++        "repo_select_menu.repo_removed": "Removed repository: {url} [{branch}]",
+++        "repo_select_menu.no_repos_warn": "No {name} repositories configured in kiauh.cfg!",
+++
+++        "settings.no_cfg_found": "No KIAUH configuration file found! Please make sure you have at least one of the following configuration files in KIAUH's root directory:",
+++        "settings.migration_detected_1": "Deprecated kiauh.cfg configuration found!",
+++        "settings.migration_detected_2": "KAIUH can now attempt to automatically migrate the configuration.",
+++        "settings.migration_desc_1": "Options 'repo_url' and 'branch' are now combined into a 'repositories' option.",
+++        "settings.migration_old_format": "Old format",
+++        "settings.migration_new_format": "New format",
+++        "settings.migrate_confirm": "Migrate to the new format?",
+++        "settings.please_update_manual": "Please update the configuration file manually.",
+++        "settings.backup_failed": "Failed to create backup of kiauh.cfg. Aborting migration. Please migrate manually.",
+++        "settings.migrate_success": "Successfully migrated {section} configuration",
+++        "settings.error_migrating": "Error migrating configuration:",
+++
+++        "extensions.load_error": "Error loading extension {name}: {error}",
+++
+++        "component.installing": "Installing {name} ...",
+++        "component.updating": "Updating {name} ...",
+++        "component.removing": "Removing {name} ...",
+++        "component.not_installed": "{name} does not seem to be installed! Skipping ...",
+++        "component.updated": "{name} updated successfully.",
+++        "component.removed": "{name} successfully removed!",
+++        "component.update_error": "Error updating {name}:",
+++        "component.install_error": "Error installing {name}:",
+++        "component.remove_error": "Error removing {name}:",
+++        "component.error_retry": "Something went wrong! Please try again...",
+++        "component.downloading": "Downloading {name} from {url} ...",
+++        "component.download_complete": "Download complete!",
+++        "component.create_backup": "Creating temporary backup of {file} as {tmp} ...",
+++        "component.continue_install": "Continue {name} installation?",
+++        "component.download_recommended": "Download the recommended {name}?",
+++        "component.install_complete": "{name} installation complete!",
+++        "component.install_failed": "{name} installation failed!",
+++        "component.existing_found": "{name} seems to be already installed!",
+++        "component.overwrite_warning": "If you continue, your current {name} installation will be overwritten.",
+++        "component.remote_mode_enable": "Enable {name}s remote mode ...",
+++        "component.remote_mode_configured": "Remote mode already configured. Skipped ...",
+++        "component.setting_storage": "Setting instance storage location to 'browser' ...",
+++        "component.remote_mode_enabled": "{name}s remote mode enabled!",
+++        "component.creating_nginx": "Creating NGINX config for {name} ...",
+++        "component.creating_nginx_ok": "NGINX config for {name} successfully created.",
+++        "component.creating_nginx_fail": "Creating NGINX config for {name} failed!",
+++        "component.port_in_use": "This port is already in use. Please select another one.",
+++        "component.no_moonraker_found": "No local Moonraker installation was found!",
+++        "component.no_moonraker_note": "It is possible to install {name} without a local Moonraker installation, but you will need to create a separate Moonraker configuration file named moonraker.conf located in the same directory as the mainsail.cfg/fluidd.cfg config with the IP address and port of your remote Moonraker instance.",
+++        "component.ipv6_warning": "It looks like IPv6 is enabled on this system!",
+++        "component.ipv6_detail": "This may cause issues with the installation of NGINX. Please refer to the KIAUH troubleshooting section on GitHub for more information.",
+++        "component.restart_info": "Restart Klipper to reload the configuration!",
+++        "component.creating_symlink": "Creating symlink for {name} ...",
+++        "component.symlink_failed": "Creating symlink failed!",
+++        "component.update_manager_warning": "Cannot add {name} to update manager! Moonraker not installed!",
+++        "component.update_confirm": "Update {name} now?",
+++        "component.update_warning": "Do NOT continue if there are ongoing prints running!",
+++        "component.restart_warning": "All {name} instances will be restarted during this process!",
+++        "component.proceed_confirm": "Proceed with installation?",
+++        "component.custom_names_confirm": "Assign custom names?",
+++        "component.add_new_instances": "Add new instances?",
+++        "component.enter_instance_name": "Enter name for instance {key}",
+++        "component.select_instance": "Select {name} instance to remove",
+++        "component.removing_instance": "Removing instance {name} ...",
+++        "component.removing_env_file": "Remove '{file}'",
+++        "component.env_not_found": "Env file in {dir} not found. Skipped ...",
+++        "component.no_services": "No {name} Services installed! Skipped ...",
+++        "component.policykit_installing": "Installing {name} policykit rules ...",
+++        "component.policykit_exists": "{name} policykit rules are already installed.",
+++        "component.policykit_ok": "{name} policykit rules successfully installed!",
+++        "component.policykit_fail": "Installing {name} policykit rules failed!",
+++        "component.removing_policykit": "Removing all {name} policykit rules ...",
+++        "component.removing_local_repo": "Removing {name} local repository ...",
+++        "component.removing_python_env": "Removing {name} Python environment ...",
+++        "component.removing_directory": "Removing {name} directory ...",
+++        "component.removing_services": "Removing {name} instances ...",
+++        "component.install_success_url": "You can access {name} via the following URL:",
+++        "component.install_success_open": "Open {name} now on: http://{ip}:{port}",
+++        "component.create_example_config": "Create example {file}?",
+++        "component.example_config_created": "Example {file} created in '{dir}'",
+++        "component.example_config_exists": "'{file}' already exists.",
+++        "component.example_config_error": "Unable to create example {file}:",
+++        "component.system_deps_parsing": "Parsing {name} system dependencies ...",
+++        "component.system_deps_not_found": "{file} not found!",
+++        "component.moonraker_not_installed_klipper_warn": "Klipper not installed!",
+++        "component.moonraker_not_installed_klipper_block": "{name} cannot be installed! Install Klipper first.",
+++        "component.install_deps_error": "Error during installation of {name} requirements!",
+++        "component.user_group_warning": "Your current user is not in group:",
+++        "component.user_group_detail": "It is possible that you won't be able to connect to the MCU. This may lead to issues related to flashing and other operations.",
+++        "component.user_group_confirm": "Add user '{user}' to group(s) now?",
+++        "component.user_group_skipped": "Skipped adding user to required groups. You might encounter issues.",
+++        "component.user_group_adding": "Adding user '{user}' to group {group} ...",
+++        "component.user_group_assigned": "Group {group} assigned to user '{user}'.",
+++        "component.user_group_error": "Unable to add user to usergroups: {error}",
+++        "component.user_group_reminder": "Remember to relog/restart this machine for the group(s) to be applied!",
+++        "component.input_shaper_title": "Install Input Shaper Dependencies",
+++        "component.input_shaper_desc": "Resonance measurements and shaper auto-calibration require additional software dependencies to be installed.",
+++        "component.input_shaper_confirm": "Do you want to install the required packages?",
+++        "component.service_mask_warning": "KIAUH was unable to mask the {service} system service. Please fix this manually or report it to the KIAUH team at {url}.",
+++        "component.crowsnest_multi_warning": "Multi instance install detected!",
+++        "component.crowsnest_multi_detail": "Crowsnest is NOT designed to support multi instances. If you continue, Crowsnest is likely not to work properly!",
+++        "component.crowsnest_continue": "Do you want to continue with the installation?",
+++        "component.crowsnest_aborted": "Crowsnest installation aborted!",
+++        "component.crowsnest_configurator": "Launching crowsnest's install configurator ...",
+++        "component.crowsnest_installer": "Launching crowsnest installer ...",
+++        "component.crowsnest_sudo_prompt": "Installer will prompt you for sudo password!",
+++        "component.crowsnest_config_fail": "Generating .config failed, installation aborted",
+++        "component.crowsnest_removed_ok": "Directory removed!",
+++        "component.log_uploading": "Uploading the following logfile from {name} ...",
+++        "component.log_success": "Upload successful! Access it via the following link:",
+++        "component.log_fail": "Uploading logfile failed!",
+++        "component.flashing": "Flashing '{name}' ...",
+++        "component.flash_success": "Flashing successful!",
+++        "component.flash_fail": "Flashing failed!",
+++        "component.flash_console": "See the console output above!",
+++        "component.no_usb_device": "Unable to find a USB device!",
+++        "component.no_uart_device": "Unable to find a UART device!",
+++        "component.no_dfu_device": "Unable to find a USB DFU device!",
+++        "component.no_rp2_device": "Unable to find a USB RP2 Boot device!",
+++        "component.identifying_usb": "Identifying MCU connected via USB ...",
+++        "component.identifying_uart": "Identifying MCU possibly connected via UART ...",
+++        "component.identifying_dfu": "Identifying MCU connected via USB in DFU mode ...",
+++        "component.identifying_rp2": "Identifying MCU connected via USB in RP2 Boot mode ...",
+++        "component.no_mcus_found": "No MCUs found!",
+++        "component.mcus_connect_hint": "Make sure they are connected and repeat this step.",
+++        "component.mcus_found": "The following MCUs were found:",
+++        "component.attention": "!!! ATTENTION !!!",
+++        "component.select_mcu_flash": "Select MCU to flash",
+++        "component.select_board": "Select board type",
+++        "component.board_selection_failed": "Board selection failed!",
+++        "component.baud_rate_hint": "If your board is flashed with firmware that connects at a custom baud rate, please change it now.",
+++        "component.baud_rate_default": "If you are unsure, stick to the default 250000!",
+++        "component.set_baud_rate": "Please set the baud rate",
+++        "component.returning_to_menu": "Returning to MCU Flash Menu in 5 seconds ...",
+++        "component.ensure_board_connected": "Make sure that the controller board is connected now!",
+++        "component.select_connection": "Select connection type",
+++        "component.firmware_config_save_desc": "You can save the firmware build configs for multiple MCUs, and use them to update the firmware without re-running make menuconfig.",
+++        "component.firmware_config_save_confirm": "Do you want to save firmware config?",
+++        "component.firmware_config_name_rules": "Allowed characters: a-z, 0-9 and '-'",
+++        "component.firmware_config_enter_name": "Enter the new firmware config name",
+++        "component.firmware_config_overwrite": "Firmware config {name} already exists, overwrite?",
+++        "component.firmware_config_save_to": "Save firmware config to '{name}'?",
+++        "component.firmware_config_saved": "Firmware config successfully saved to {name}",
+++        "component.firmware_built": "Firmware successfully built!",
+++        "component.firmware_located": "Firmware file located in '{dir}/out'!",
+++        "component.firmware_build_fail": "Building Klipper Firmware failed!",
+++        "component.installing_sys_deps": "Installing system packages...",
+++        "component.install_deps_fail": "Installing dependencies failed!",
+++        "component.create_example_config_confirm": "Create example {file}?",
+++        "component.parsing_deps_from": "Parsing system dependencies from {file} ...",
+++        "component.no_moonraker_instances_service": "No Moonraker instances found via systemd services.",
+++        "component.attempting_find_data": "Attempting to find printer data directories in home directory...",
+++        "component.no_backup_dir": "Unable to find directory to backup!",
+++        "component.no_printer_data": "No printer data directories found in home directory.",
+++        "component.port_config_saving": "Saving new port configuration ...",
+++        "component.port_config_saved": "Port configuration saved!",
+++        "component.port_config_done": "Port reconfiguration complete!",
+++        "component.client_config_exists": "Another Client-Config is already installed! Skipped ...",
+++        "component.client_config_reinstall": "Re-install {name}?",
+++        "component.client_config_updated": "Successfully updated {name}.",
+++        "component.stop_instances": "Stopping all {name} instances ...",
+++        "component.recreating_venv": "Recreating {name} virtualenv ...",
+++        "component.switching_repo": "Switching to {name}'s new source repository ...",
+++        "component.current_repo": "Current repository",
+++        "component.hostname_title": "Change System Hostname",
+++        "component.hostname_desc": "Changing the hostname of this system allows you to access the web interface of your printer from any device in your local network using the new hostname instead of the IP address.",
+++        "component.hostname_confirm": "Do you want to change the hostname?",
+++        "component.hostname_rules": "Allowed characters: a-z, 0-9 and '-'",
+++        "component.hostname_enter": "Enter the new hostname",
+++        "component.hostname_change_confirm": "Change the hostname to '{name}'?",
+++        "component.hostname_abort": "Aborting hostname change ...",
+++        "component.hostname_changing": "Changing hostname ...",
+++        "component.hostname_checking_deps": "Checking for dependencies ...",
+++        "component.hostname_backup_hosts": "Creating backup of hosts file ...",
+++        "component.hostname_setting": "Setting hostname to '{name}' ...",
+++        "component.hostname_writing": "Writing new hostname to /etc/hosts ...",
+++        "component.hostname_success": "New hostname successfully configured!",
+++        "component.hostname_reboot": "Remember to reboot for the changes to take effect!\\n",
+++        "component.hostname_error": "Error during change hostname procedure: {error}"
+++    }
+++}
+++}
++diff --git a/kiauh/core/i18n/locales/ja.json b/kiauh/core/i18n/locales/ja.json
++new file mode 100644
++index 0000000..30dadb4
++--- /dev/null
+++++ b/kiauh/core/i18n/locales/ja.json
++@@ -0,0 +1,151 @@
+++{
+++    "meta": {
+++        "language": "日本語",
+++        "author": "KIAUH Community",
+++        "locale": "ja"
+++    },
+++    "strings": {
+++        "common.quit": "Q) 終了",
+++        "common.back": "B) << 戻る",
+++        "common.help": "H) ヘルプ [?]",
+++        "common.perform_action": "操作を実行",
+++        "common.happy_printing": "良いプリントを！",
+++        "common.unexpected_error": "予期しないエラーが発生しました：",
+++        "common.invalid_choice": "無効な選択です。有効な値を選択してください。",
+++        "common.input_not_empty": "入力を空にすることはできません！",
+++        "common.value_reserved": "この値は既に使用されているか予約されています。",
+++        "common.invalid_option": "無効なオプションです！有効なオプションを選択してください。",
+++        "common.success": "成功！",
+++        "common.not_available": "利用不可！",
+++        "common.owner": "オーナー",
+++        "common.repo": "リポジトリ",
+++        "common.branch": "ブランチ",
+++        "common.cancel": "操作がキャンセルされました。",
+++
+++        "logger.info": "[情報] {msg}",
+++        "logger.ok": "[成功] {msg}",
+++        "logger.warn": "[警告] {msg}",
+++        "logger.error": "[エラー] {msg}",
+++        "logger.status": "\n###### {msg}",
+++
+++        "header.title": "KIAUH",
+++        "header.subtitle": "Klipper インストール＆アップデートヘルパー",
+++
+++        "status.installed": "インストール済み",
+++        "status.not_installed": "未インストール",
+++        "status.incomplete": "不完全",
+++
+++        "main_menu.title": "メインメニュー",
+++        "main_menu.log_upload": "ログアップロード",
+++        "main_menu.install": "インストール",
+++        "main_menu.update": "更新",
+++        "main_menu.remove": "削除",
+++        "main_menu.advanced": "詳細",
+++        "main_menu.backup": "バックアップ",
+++        "main_menu.settings": "設定",
+++        "main_menu.extensions": "拡張機能",
+++        "main_menu.community": "コミュニティ",
+++        "main_menu.changelog": "変更履歴",
+++        "main_menu.klipper": "Klipper",
+++        "main_menu.moonraker": "Moonraker",
+++        "main_menu.mainsail": "Mainsail",
+++        "main_menu.fluidd": "Fluidd",
+++        "main_menu.client_config": "クライアント設定",
+++        "main_menu.klipperscreen": "KlipperScreen",
+++        "main_menu.crowsnest": "Crowsnest",
+++
+++        "install_menu.title": "インストールメニュー",
+++        "install_menu.firmware_api": "ファームウェア＆API",
+++        "install_menu.touchscreen_gui": "タッチスクリーン GUI",
+++        "install_menu.webcam_streamer": "Webcam ストリーマー",
+++        "install_menu.webinterface": "Web インターフェース",
+++        "install_menu.client_config": "クライアント設定",
+++
+++        "update_menu.title": "更新メニュー",
+++        "update_menu.loading": "更新メニューを読み込み中、お待ちください",
+++        "update_menu.update_all": "a) すべて更新",
+++        "update_menu.current": "現在",
+++        "update_menu.latest": "最新",
+++        "update_menu.klipper_api": "Klipper & API",
+++        "update_menu.other": "その他",
+++        "update_menu.system": "システム",
+++        "update_menu.no_upgrades": "利用可能なアップグレードはありません。",
+++        "update_menu.upgrades_available": "{count} 件のアップグレードが利用可能！",
+++        "update_menu.updating_all": "すべてのコンポーネントを更新中 ...",
+++        "update_menu.not_installed": "{name} はインストールされていません！スキップ ...",
+++        "update_menu.up_to_date": "{name} は既に最新です！スキップ ...",
+++        "update_menu.no_system_upgrades": "利用可能なシステムアップグレードはありません！",
+++        "update_menu.upgradable_title": "利用可能なシステムアップデート",
+++        "update_menu.following_packages": "以下のパッケージがアップグレードされます：",
+++        "update_menu.upgrade_packages_confirm": "パッケージをアップグレードしますか？",
+++        "update_menu.upgrading_packages": "システムパッケージをアップグレード中 ...",
+++        "update_menu.error_upgrading": "システムパッケージのアップグレード中にエラー：",
+++
+++        "remove_menu.title": "削除メニュー",
+++        "remove_menu.info": "情報：設定およびバックアップは保持されます！",
+++
+++        "advanced_menu.title": "詳細メニュー",
+++        "advanced_menu.klipper_firmware": "Klipper ファームウェア",
+++        "advanced_menu.repository_rollback": "リポジトリロールバック",
+++        "advanced_menu.extra_deps": "追加の依存関係",
+++        "advanced_menu.build": "ビルド",
+++        "advanced_menu.flash": "フラッシュ",
+++        "advanced_menu.build_flash": "ビルド + フラッシュ",
+++        "advanced_menu.get_mcu_id": "MCU ID 取得",
+++        "advanced_menu.input_shaper": "Input Shaper",
+++        "advanced_menu.change_hostname": "ホスト名変更",
+++
+++        "backup_menu.title": "バックアップメニュー",
+++        "backup_menu.info": "情報：バックアップは '~/kiauh_backups' にあります",
+++        "backup_menu.klipper_moonraker_api": "Klipper & Moonraker API",
+++        "backup_menu.config_folder": "Config フォルダー",
+++        "backup_menu.moonraker_database": "Moonraker データベース",
+++        "backup_menu.touchscreen_gui": "タッチスクリーン GUI",
+++        "backup_menu.webinterface": "Web インターフェース",
+++
+++        "settings_menu.title": "設定メニュー",
+++        "settings_menu.switch_klipper_repo": "Klipper ソースリポジトリを切り替え",
+++        "settings_menu.switch_moonraker_repo": "Moonraker ソースリポジトリを切り替え",
+++        "settings_menu.install_unstable": "不安定版をインストール",
+++        "settings_menu.auto_backup": "自動バックアップ",
+++        "settings_menu.backup_before_update": "更新前にバックアップ",
+++        "settings_menu.language": "言語設定",
+++        "settings_menu.select_language": "インターフェース言語を選択",
+++        "settings_menu.language_changed": "言語が {name} に変更されました。KIAUH を再起動すると適用されます。",
+++
+++        "repo_select_menu.klipper_title": "Klipper リポジトリ選択メニュー",
+++        "repo_select_menu.moonraker_title": "Moonraker リポジトリ選択メニュー",
+++        "repo_select_menu.select_repository": "リポジトリを選択",
+++        "repo_select_menu.available_repos": "利用可能なリポジトリ",
+++        "repo_select_menu.add_repository": "A) リポジトリを追加",
+++        "repo_select_menu.remove_repository": "R) リポジトリを削除",
+++        "repo_select_menu.switching": "{name} の新しいソースリポジトリに切り替え中 ...",
+++        "repo_select_menu.enter_url": "リポジトリ URL を入力",
+++        "repo_select_menu.url_note": "注意：入力検証はありません。正確さを確認してください",
+++        "repo_select_menu.enter_branch": "ブランチ名を入力",
+++        "repo_select_menu.press_enter_default": "Enter でデフォルトブランチ (master) を使用します。",
+++        "repo_select_menu.summary": "サマリー",
+++        "repo_select_menu.repo_url": "URL",
+++        "repo_select_menu.save_repo": "リポジトリを保存",
+++        "repo_select_menu.repo_added_saved": "リポジトリが追加され保存されました。",
+++        "repo_select_menu.operation_cancelled": "ユーザーにより操作がキャンセルされました。",
+++        "repo_select_menu.no_repos": "リポジトリが設定されていません。",
+++        "repo_select_menu.select_remove": "削除するリポジトリを選択",
+++        "repo_select_menu.repo_removed": "リポジトリを削除しました：{url} [{branch}]",
+++        "repo_select_menu.no_repos_warn": "kiauh.cfg に {name} リポジトリが設定されていません！",
+++
+++        "settings.no_cfg_found": "KIAUH 設定ファイルが見つかりません！KIAUH のルートディレクトリに以下の設定ファイルのいずれかがあることを確認してください：",
+++        "settings.migration_detected_1": "廃止された kiauh.cfg 設定が見つかりました！",
+++        "settings.migration_detected_2": "KIAUH は自動的に設定を移行することを試みることができます。",
+++        "settings.migration_desc_1": "オプション 'repo_url' と 'branch' が 'repositories' オプションに統合されました。",
+++        "settings.migration_old_format": "旧形式",
+++        "settings.migration_new_format": "新形式",
+++        "settings.migrate_confirm": "新しい形式に移行しますか？",
+++        "settings.please_update_manual": "設定ファイルを手動で更新してください。",
+++        "settings.backup_failed": "kiauh.cfg のバックアップを作成できませんでした。移行を中止します。手動で移行してください。",
+++        "settings.migrate_success": "{section} 設定の移行に成功しました",
+++        "settings.error_migrating": "設定の移行中にエラー：",
+++
+++        "extensions.load_error": "拡張機能 {name} の読み込みエラー：{error}"
+++    }
+++}
++diff --git a/kiauh/core/i18n/locales/zh_CN.json b/kiauh/core/i18n/locales/zh_CN.json
++new file mode 100644
++index 0000000..33bc143
++--- /dev/null
+++++ b/kiauh/core/i18n/locales/zh_CN.json
++@@ -0,0 +1,151 @@
+++{
+++    "meta": {
+++        "language": "简体中文",
+++        "author": "KIAUH Community",
+++        "locale": "zh_CN"
+++    },
+++    "strings": {
+++        "common.quit": "Q) 退出",
+++        "common.back": "B) << 返回",
+++        "common.help": "H) 帮助 [?]",
+++        "common.perform_action": "执行操作",
+++        "common.happy_printing": "打印愉快！",
+++        "common.unexpected_error": "发生意外错误：",
+++        "common.invalid_choice": "无效选择，请选择一个有效的值。",
+++        "common.input_not_empty": "输入不能为空！",
+++        "common.value_reserved": "该值已被使用或保留。",
+++        "common.invalid_option": "无效选项！请选择一个有效的选项。",
+++        "common.success": "成功！",
+++        "common.not_available": "不可用！",
+++        "common.owner": "所有者",
+++        "common.repo": "仓库",
+++        "common.branch": "分支",
+++        "common.cancel": "操作已取消。",
+++
+++        "logger.info": "[信息] {msg}",
+++        "logger.ok": "[成功] {msg}",
+++        "logger.warn": "[警告] {msg}",
+++        "logger.error": "[错误] {msg}",
+++        "logger.status": "\n###### {msg}",
+++
+++        "header.title": "KIAUH",
+++        "header.subtitle": "Klipper 安装与更新助手",
+++
+++        "status.installed": "已安装",
+++        "status.not_installed": "未安装",
+++        "status.incomplete": "不完整",
+++
+++        "main_menu.title": "主菜单",
+++        "main_menu.log_upload": "上传日志",
+++        "main_menu.install": "安装",
+++        "main_menu.update": "更新",
+++        "main_menu.remove": "卸载",
+++        "main_menu.advanced": "高级",
+++        "main_menu.backup": "备份",
+++        "main_menu.settings": "设置",
+++        "main_menu.extensions": "扩展",
+++        "main_menu.community": "社区",
+++        "main_menu.changelog": "变更日志",
+++        "main_menu.klipper": "Klipper",
+++        "main_menu.moonraker": "Moonraker",
+++        "main_menu.mainsail": "Mainsail",
+++        "main_menu.fluidd": "Fluidd",
+++        "main_menu.client_config": "客户端配置",
+++        "main_menu.klipperscreen": "KlipperScreen",
+++        "main_menu.crowsnest": "Crowsnest",
+++
+++        "install_menu.title": "安装菜单",
+++        "install_menu.firmware_api": "固件与 API",
+++        "install_menu.touchscreen_gui": "触摸屏界面",
+++        "install_menu.webcam_streamer": "摄像头推流",
+++        "install_menu.webinterface": "网页界面",
+++        "install_menu.client_config": "客户端配置",
+++
+++        "update_menu.title": "更新菜单",
+++        "update_menu.loading": "正在加载更新菜单，请稍候",
+++        "update_menu.update_all": "a) 更新全部",
+++        "update_menu.current": "当前",
+++        "update_menu.latest": "最新",
+++        "update_menu.klipper_api": "Klipper 与 API",
+++        "update_menu.other": "其他",
+++        "update_menu.system": "系统",
+++        "update_menu.no_upgrades": "没有可用的更新。",
+++        "update_menu.upgrades_available": "{count} 个更新可用！",
+++        "update_menu.updating_all": "正在更新所有组件 ...",
+++        "update_menu.not_installed": "{name} 未安装！已跳过 ...",
+++        "update_menu.up_to_date": "{name} 已是最新！已跳过 ...",
+++        "update_menu.no_system_upgrades": "没有可用的系统更新！",
+++        "update_menu.upgradable_title": "可用的系统更新",
+++        "update_menu.following_packages": "以下软件包将被升级：",
+++        "update_menu.upgrade_packages_confirm": "是否升级软件包？",
+++        "update_menu.upgrading_packages": "正在升级系统软件包 ...",
+++        "update_menu.error_upgrading": "升级系统软件包时出错：",
+++
+++        "remove_menu.title": "卸载菜单",
+++        "remove_menu.info": "提示：配置文件和/或备份将被保留！",
+++
+++        "advanced_menu.title": "高级菜单",
+++        "advanced_menu.klipper_firmware": "Klipper 固件",
+++        "advanced_menu.repository_rollback": "仓库回滚",
+++        "advanced_menu.extra_deps": "额外依赖",
+++        "advanced_menu.build": "编译",
+++        "advanced_menu.flash": "烧录",
+++        "advanced_menu.build_flash": "编译 + 烧录",
+++        "advanced_menu.get_mcu_id": "获取 MCU ID",
+++        "advanced_menu.input_shaper": "输入整形",
+++        "advanced_menu.change_hostname": "修改主机名",
+++
+++        "backup_menu.title": "备份菜单",
+++        "backup_menu.info": "提示：备份文件位于 '~/kiauh_backups'",
+++        "backup_menu.klipper_moonraker_api": "Klipper 与 Moonraker API",
+++        "backup_menu.config_folder": "配置文件夹",
+++        "backup_menu.moonraker_database": "Moonraker 数据库",
+++        "backup_menu.touchscreen_gui": "触摸屏界面",
+++        "backup_menu.webinterface": "网页界面",
+++
+++        "settings_menu.title": "设置菜单",
+++        "settings_menu.switch_klipper_repo": "切换 Klipper 源仓库",
+++        "settings_menu.switch_moonraker_repo": "切换 Moonraker 源仓库",
+++        "settings_menu.install_unstable": "安装不稳定版本",
+++        "settings_menu.auto_backup": "自动备份",
+++        "settings_menu.backup_before_update": "更新前备份",
+++        "settings_menu.language": "语言设置",
+++        "settings_menu.select_language": "选择界面语言",
+++        "settings_menu.language_changed": "语言已切换为 {name}。重启 KIAUH 后生效。",
+++
+++        "repo_select_menu.klipper_title": "Klipper 仓库选择菜单",
+++        "repo_select_menu.moonraker_title": "Moonraker 仓库选择菜单",
+++        "repo_select_menu.select_repository": "选择仓库",
+++        "repo_select_menu.available_repos": "可选仓库",
+++        "repo_select_menu.add_repository": "A) 添加仓库",
+++        "repo_select_menu.remove_repository": "R) 删除仓库",
+++        "repo_select_menu.switching": "正在切换到 {name} 的新源仓库 ...",
+++        "repo_select_menu.enter_url": "输入仓库 URL",
+++        "repo_select_menu.url_note": "注意：没有输入验证，请自行检查输入的正确性",
+++        "repo_select_menu.enter_branch": "输入分支名称",
+++        "repo_select_menu.press_enter_default": "按 Enter 使用默认分支 (master)。",
+++        "repo_select_menu.summary": "摘要",
+++        "repo_select_menu.repo_url": "URL",
+++        "repo_select_menu.save_repo": "保存仓库",
+++        "repo_select_menu.repo_added_saved": "仓库已添加并保存。",
+++        "repo_select_menu.operation_cancelled": "操作已由用户取消。",
+++        "repo_select_menu.no_repos": "未配置任何仓库。",
+++        "repo_select_menu.select_remove": "选择要删除的仓库",
+++        "repo_select_menu.repo_removed": "已删除仓库：{url} [{branch}]",
+++        "repo_select_menu.no_repos_warn": "kiauh.cfg 中未配置 {name} 仓库！",
+++
+++        "settings.no_cfg_found": "未找到 KIAUH 配置文件！请确保 KIAUH 根目录下至少有以下配置文件之一：",
+++        "settings.migration_detected_1": "发现已弃用的 kiauh.cfg 配置！",
+++        "settings.migration_detected_2": "KIAUH 现在可以尝试自动迁移配置。",
+++        "settings.migration_desc_1": "选项 'repo_url' 和 'branch' 已合并为 'repositories' 选项。",
+++        "settings.migration_old_format": "旧格式",
+++        "settings.migration_new_format": "新格式",
+++        "settings.migrate_confirm": "是否迁移到新格式？",
+++        "settings.please_update_manual": "请手动更新配置文件。",
+++        "settings.backup_failed": "无法创建 kiauh.cfg 的备份。中止迁移。请手动迁移。",
+++        "settings.migrate_success": "成功迁移 {section} 配置",
+++        "settings.error_migrating": "迁移配置时出错：",
+++
+++        "extensions.load_error": "加载扩展 {name} 时出错：{error}"
+++    }
+++}
++-- 
++2.52.0.windows.1
++
+diff --git a/patches/0003-feat-i18n-integrate-language-settings-into-KIAUH-con.patch b/patches/0003-feat-i18n-integrate-language-settings-into-KIAUH-con.patch
+new file mode 100644
+index 0000000..f7ae976
+--- /dev/null
++++ b/patches/0003-feat-i18n-integrate-language-settings-into-KIAUH-con.patch
+@@ -0,0 +1,177 @@
++From 51de8eade318360f77fdb44b5e2fdfdd7ecdbcf3 Mon Sep 17 00:00:00 2001
++From: Maoweicao <Maoweicao@users.noreply.github.com>
++Date: Mon, 4 May 2026 18:26:02 +0800
++Subject: [PATCH 3/7] feat(i18n): integrate language settings into KIAUH
++ configuration
++
++- Add 'language' field to AppSettings dataclass with read/write support
++- Add language: en to default.kiauh.cfg with available languages comment
++- Initialize i18n in main.py after KiauhSettings load, using KIAUH_LANG env var or config value
++---
++ default.kiauh.cfg                     |  3 ++
++ kiauh/core/settings/kiauh_settings.py | 40 ++++++++++++++++++---------
++ kiauh/main.py                         |  4 ++-
++ 3 files changed, 33 insertions(+), 14 deletions(-)
++
++diff --git a/default.kiauh.cfg b/default.kiauh.cfg
++index d3ac149..68b62f8 100644
++--- a/default.kiauh.cfg
+++++ b/default.kiauh.cfg
++@@ -1,5 +1,8 @@
++ [kiauh]
++ backup_before_update: False
+++# Available languages: en, zh_CN, de, ja
+++# Use 'auto' to auto-detect from terminal locale
+++language: en
++ 
++ [klipper]
++ # add custom repositories here, if at least one is given, the first in the list will be used by default
++diff --git a/kiauh/core/settings/kiauh_settings.py b/kiauh/core/settings/kiauh_settings.py
++index a2a2be2..27755fc 100644
++--- a/kiauh/core/settings/kiauh_settings.py
+++++ b/kiauh/core/settings/kiauh_settings.py
++@@ -14,6 +14,7 @@ from typing import Any, Callable, List, TypeVar
++ 
++ from components.klipper import KLIPPER_REPO_URL
++ from components.moonraker import MOONRAKER_REPO_URL
+++from core.i18n import _
++ from core.logger import DialogType, Logger
++ from core.services.backup_service import BackupService
++ from core.simple_config_parser.simple_config_parser import (
++@@ -41,6 +42,7 @@ class InvalidValueError(Exception):
++ @dataclass
++ class AppSettings:
++     backup_before_update: bool | None = field(default=None)
+++    language: str | None = field(default=None)
++ 
++ 
++ @dataclass
++@@ -129,8 +131,8 @@ class KiauhSettings:
++             Logger.print_dialog(
++                 DialogType.ERROR,
++                 [
++-                    "No KIAUH configuration file found! Please make sure you have at least "
++-                    "one of the following configuration files in KIAUH's root directory:",
+++                    _("settings.no_cfg_found"),
+++                    "\n\n",
++                     "● default.kiauh.cfg",
++                     "● kiauh.cfg",
++                 ],
++@@ -157,6 +159,12 @@ class KiauhSettings:
++             self.config.getboolean,
++             False,
++         )
+++        self.kiauh.language = self.__read_from_cfg(
+++            "kiauh",
+++            "language",
+++            self.config.getval,
+++            "en",
+++        )
++ 
++         # parse Klipper options
++         self.klipper.use_python_binary = self.__read_from_cfg(
++@@ -299,6 +307,12 @@ class KiauhSettings:
++                 "backup_before_update",
++                 str(self.kiauh.backup_before_update),
++             )
+++        if self.kiauh.language is not None:
+++            self.config.set_option(
+++                "kiauh",
+++                "language",
+++                str(self.kiauh.language),
+++            )
++ 
++         # Handle repositories
++         if self.klipper.repositories is not None:
++@@ -342,14 +356,14 @@ class KiauhSettings:
++ 
++     def _prompt_migration_dialog(self) -> None:
++         migration_1: List[str] = [
++-            "Options 'repo_url' and 'branch' are now combined into a 'repositories' option.",
+++            _("settings.migration_desc_1"),
++             "\n\n",
++-            "● Old format:",
+++            f"● {_('settings.migration_old_format')}:",
++             "  [klipper]",
++             "  repo_url: https://github.com/Klipper3d/klipper",
++             "  branch: master",
++             "\n\n",
++-            "● New format:",
+++            f"● {_('settings.migration_new_format')}:",
++             "  [klipper]",
++             "  repositories:",
++             "      https://github.com/Klipper3d/klipper, master",
++@@ -357,19 +371,19 @@ class KiauhSettings:
++         Logger.print_dialog(
++             DialogType.ATTENTION,
++             [
++-                "Deprecated kiauh.cfg configuration found!",
++-                "KAIUH can now attempt to automatically migrate the configuration.",
+++                _("settings.migration_detected_1"),
+++                _("settings.migration_detected_2"),
++                 "\n\n",
++                 *migration_1,
++             ],
++         )
++-        if get_confirm("Migrate to the new format?"):
+++        if get_confirm(_("settings.migrate_confirm")):
++             self._migrate_repo_config()
++         else:
++             Logger.print_dialog(
++                 DialogType.ERROR,
++                 [
++-                    "Please update the configuration file manually.",
+++                    _("settings.please_update_manual"),
++                 ],
++                 center_content=True,
++             )
++@@ -381,7 +395,7 @@ class KiauhSettings:
++             Logger.print_dialog(
++                 DialogType.ERROR,
++                 [
++-                    "Failed to create backup of kiauh.cfg. Aborting migration. Please migrate manually."
+++                    _("settings.backup_failed"),
++                 ],
++             )
++             kill()
++@@ -405,12 +419,12 @@ class KiauhSettings:
++                     self.config.remove_option(section, "repo_url")
++                     self.config.remove_option(section, "branch")
++ 
++-                    Logger.print_ok(f"Successfully migrated {section} configuration")
+++                    Logger.print_ok(_("settings.migrate_success", section=section))
++ 
++             self.config.write_file(CUSTOM_CFG)
++             self.config.read_file(CUSTOM_CFG)  # reload config
++ 
++         except Exception as e:
++-            Logger.print_error(f"Error migrating configuration: {e}")
++-            Logger.print_error("Please migrate manually.")
+++            Logger.print_error(_("settings.error_migrating") + f" {e}")
+++            Logger.print_error(_("settings.please_update_manual"))
++             kill()
++diff --git a/kiauh/main.py b/kiauh/main.py
++index 3832ba6..093c63f 100644
++--- a/kiauh/main.py
+++++ b/kiauh/main.py
++@@ -9,6 +9,7 @@
++ import io
++ import sys
++ 
+++from core.i18n import init_i18n
++ from core.logger import Logger
++ from core.menus.main_menu import MainMenu
++ from core.settings.kiauh_settings import KiauhSettings
++@@ -22,7 +23,8 @@ def ensure_encoding() -> None:
++ 
++ def main() -> None:
++     try:
++-        KiauhSettings()
+++        settings = KiauhSettings()
+++        init_i18n(settings.kiauh.language)
++         ensure_encoding()
++         MainMenu().run()
++     except KeyboardInterrupt:
++-- 
++2.52.0.windows.1
++
+diff --git a/patches/0004-feat-i18n-convert-core-UI-infrastructure-to-use-tran.patch b/patches/0004-feat-i18n-convert-core-UI-infrastructure-to-use-tran.patch
+new file mode 100644
+index 0000000..8e02563
+--- /dev/null
++++ b/patches/0004-feat-i18n-convert-core-UI-infrastructure-to-use-tran.patch
+@@ -0,0 +1,214 @@
++From b7f7850f6f74ea646fdb2655c17decb201a5ab37 Mon Sep 17 00:00:00 2001
++From: Maoweicao <Maoweicao@users.noreply.github.com>
++Date: Mon, 4 May 2026 18:26:12 +0800
++Subject: [PATCH 4/7] feat(i18n): convert core UI infrastructure to use
++ translations
++
++- Logger: make [INFO]/[OK]/[WARN]/[ERROR] prefix labels translatable
++- BaseMenu: translate header title/subtitle, footer (Quit/Back/Help) texts
++- BaseMenu: translate 'Happy printing!' and unexpected error messages
++- Input utils: translate validation error messages
++- ComponentStatus: use translation keys in StatusMap (resolved lazily via _())
++---
++ kiauh/core/logger.py                 | 11 ++++++-----
++ kiauh/core/menus/base_menu.py        | 17 +++++++++--------
++ kiauh/core/types/component_status.py |  8 ++++----
++ kiauh/utils/input_utils.py           | 14 +++++++-------
++ 4 files changed, 26 insertions(+), 24 deletions(-)
++
++diff --git a/kiauh/core/logger.py b/kiauh/core/logger.py
++index 27dc1e7..5718ee5 100644
++--- a/kiauh/core/logger.py
+++++ b/kiauh/core/logger.py
++@@ -12,6 +12,7 @@ import textwrap
++ from enum import Enum
++ from typing import List
++ 
+++from core.i18n import _
++ from core.types.color import Color
++ 
++ 
++@@ -37,27 +38,27 @@ BORDER_RIGHT: str = "┃"
++ class Logger:
++     @staticmethod
++     def print_info(msg, prefix=True, start="", end="\n") -> None:
++-        message = f"[INFO] {msg}" if prefix else msg
+++        message = _("logger.info", msg=msg) if prefix else msg
++         Logger.__print(Color.WHITE, start, message, end)
++ 
++     @staticmethod
++     def print_ok(msg: str = "Success!", prefix=True, start="", end="\n") -> None:
++-        message = f"[OK] {msg}" if prefix else msg
+++        message = _("logger.ok", msg=msg) if prefix else msg
++         Logger.__print(Color.GREEN, start, message, end)
++ 
++     @staticmethod
++     def print_warn(msg, prefix=True, start="", end="\n") -> None:
++-        message = f"[WARN] {msg}" if prefix else msg
+++        message = _("logger.warn", msg=msg) if prefix else msg
++         Logger.__print(Color.YELLOW, start, message, end)
++ 
++     @staticmethod
++     def print_error(msg, prefix=True, start="", end="\n") -> None:
++-        message = f"[ERROR] {msg}" if prefix else msg
+++        message = _("logger.error", msg=msg) if prefix else msg
++         Logger.__print(Color.RED, start, message, end)
++ 
++     @staticmethod
++     def print_status(msg, prefix=True, start="", end="\n") -> None:
++-        message = f"\n###### {msg}" if prefix else msg
+++        message = _("logger.status", msg=msg) if prefix else msg
++         Logger.__print(Color.MAGENTA, start, message, end)
++ 
++     @staticmethod
++diff --git a/kiauh/core/menus/base_menu.py b/kiauh/core/menus/base_menu.py
++index 8a4de85..4083eb2 100644
++--- a/kiauh/core/menus/base_menu.py
+++++ b/kiauh/core/menus/base_menu.py
++@@ -17,6 +17,7 @@ from abc import abstractmethod
++ from enum import Enum
++ from typing import Dict, Type
++ 
+++from core.i18n import _
++ from core.logger import Logger
++ from core.menus import FooterType, Option
++ from core.services.message_service import MessageService
++@@ -30,8 +31,8 @@ def clear() -> None:
++ 
++ 
++ def print_header() -> None:
++-    line1 = " [ KIAUH ] "
++-    line2 = "Klipper Installation And Update Helper"
+++    line1 = f" [ {_('header.title')} ] "
+++    line2 = _("header.subtitle")
++     line3 = ""
++     color = Color.CYAN
++     count = 62 - len(str(color)) - len(str(Color.RST))
++@@ -48,7 +49,7 @@ def print_header() -> None:
++ 
++ 
++ def print_quit_footer() -> None:
++-    text = "Q) Quit"
+++    text = _("common.quit")
++     color = Color.RED
++     count = 62 - len(str(color)) - len(str(Color.RST))
++     footer = textwrap.dedent(
++@@ -61,7 +62,7 @@ def print_quit_footer() -> None:
++ 
++ 
++ def print_back_footer() -> None:
++-    text = "B) « Back"
+++    text = _("common.back")
++     color = Color.GREEN
++     count = 62 - len(str(color)) - len(str(Color.RST))
++     footer = textwrap.dedent(
++@@ -74,8 +75,8 @@ def print_back_footer() -> None:
++ 
++ 
++ def print_back_help_footer() -> None:
++-    text1 = "B) « Back"
++-    text2 = "H) Help [?]"
+++    text1 = _("common.back")
+++    text2 = _("common.help")
++     color1 = Color.GREEN
++     color2 = Color.YELLOW
++     count = 34 - len(str(color1)) - len(str(Color.RST))
++@@ -157,7 +158,7 @@ class BaseMenu(metaclass=PostInitCaller):
++         self.help_menu(previous_menu=self.__class__).run()
++ 
++     def __exit(self, **kwargs) -> None:
++-        Logger.print_ok("###### Happy printing!", False)
+++        Logger.print_ok(f"###### {_('common.happy_printing')}", False)
++         sys.exit(0)
++ 
++     @abstractmethod
++@@ -235,5 +236,5 @@ class BaseMenu(metaclass=PostInitCaller):
++ 
++         except Exception as e:
++             Logger.print_error(
++-                f"An unexpected error occured:\n{e}\n{traceback.format_exc()}"
+++                f"{_('common.unexpected_error')}\n{e}\n{traceback.format_exc()}"
++             )
++diff --git a/kiauh/core/types/component_status.py b/kiauh/core/types/component_status.py
++index f109b58..ab25070 100644
++--- a/kiauh/core/types/component_status.py
+++++ b/kiauh/core/types/component_status.py
++@@ -13,10 +13,10 @@ from typing import Dict, Literal
++ 
++ StatusText = Literal["Installed", "Not installed", "Incomplete"]
++ StatusCode = Literal[0, 1, 2]
++-StatusMap: Dict[StatusCode, StatusText] = {
++-    0: "Not installed",
++-    1: "Incomplete",
++-    2: "Installed",
+++StatusMap: Dict[StatusCode, str] = {
+++    0: "status.not_installed",
+++    1: "status.incomplete",
+++    2: "status.installed",
++ }
++ 
++ 
++diff --git a/kiauh/utils/input_utils.py b/kiauh/utils/input_utils.py
++index 9c994ae..ea61d67 100644
++--- a/kiauh/utils/input_utils.py
+++++ b/kiauh/utils/input_utils.py
++@@ -11,7 +11,7 @@ from __future__ import annotations
++ import re
++ from typing import Dict, List
++ 
++-from core.constants import INVALID_CHOICE
+++from core.i18n import _
++ from core.logger import Logger
++ from core.types.color import Color
++ 
++@@ -47,7 +47,7 @@ def get_confirm(question: str, default_choice=True, allow_go_back=False) -> bool
++         elif allow_go_back and choice in options_go_back:
++             return None
++         else:
++-            Logger.print_error(INVALID_CHOICE)
+++            Logger.print_error(_("common.invalid_choice"))
++ 
++ 
++ def get_number_input(
++@@ -79,7 +79,7 @@ def get_number_input(
++         try:
++             return validate_number_input(_input, min_value, max_value)
++         except ValueError:
++-            Logger.print_error(INVALID_CHOICE)
+++            Logger.print_error(_("common.invalid_choice"))
++ 
++ 
++ def get_string_input(
++@@ -109,17 +109,17 @@ def get_string_input(
++         if default is not None and _input == "":
++             return default
++         elif _input == "" and not allow_empty:
++-            Logger.print_error("Input must not be empty!")
+++            Logger.print_error(_("common.input_not_empty"))
++         elif _pattern is not None and _pattern.match(_input):
++             return _input
++         elif _input.lower() in _exclude:
++-            Logger.print_error("This value is already in use/reserved.")
+++            Logger.print_error(_("common.value_reserved"))
++         elif allow_special_chars:
++             return _input
++         elif not allow_special_chars and _input.isalnum():
++             return _input
++         else:
++-            Logger.print_error(INVALID_CHOICE)
+++            Logger.print_error(_("common.invalid_choice"))
++ 
++ 
++ def get_selection_input(question: str, option_list: List | Dict, default=None) -> str:
++@@ -142,7 +142,7 @@ def get_selection_input(question: str, option_list: List | Dict, default=None) -
++         else:
++             raise ValueError("Invalid option_list type")
++ 
++-        Logger.print_error("Invalid option! Please select a valid option.", False)
+++        Logger.print_error(_("common.invalid_option"), False)
++ 
++ 
++ def format_question(question: str, default=None) -> str:
++-- 
++2.52.0.windows.1
++
+diff --git a/patches/0005-feat-i18n-convert-all-menu-files-to-use-translations.patch b/patches/0005-feat-i18n-convert-all-menu-files-to-use-translations.patch
+new file mode 100644
+index 0000000..bd32faa
+--- /dev/null
++++ b/patches/0005-feat-i18n-convert-all-menu-files-to-use-translations.patch
+@@ -0,0 +1,777 @@
++From f67b6b6a2099183320bd303b65d125ca872515b0 Mon Sep 17 00:00:00 2001
++From: Maoweicao <Maoweicao@users.noreply.github.com>
++Date: Mon, 4 May 2026 18:26:24 +0800
++Subject: [PATCH 5/7] feat(i18n): convert all menu files to use translations
++
++- MainMenu: translate title, status labels, component names, changelog
++- SettingsMenu: add language selector (option 6) with interactive dialog
++- SettingsMenu: translate all labels, repository info, toggle descriptions
++- InstallMenu: translate section headers
++- UpdateMenu: translate title, headers, status messages, system update dialogs
++- RemoveMenu: translate title and info message
++- AdvancedMenu: translate title and all menu item labels
++- BackupMenu: translate title, section headers, info label
++- RepoSelectMenu: translate title, repo labels, add/remove dialogs
++---
++ kiauh/core/menus/advanced_menu.py    | 21 ++++-----
++ kiauh/core/menus/backup_menu.py      | 15 +++----
++ kiauh/core/menus/install_menu.py     | 13 +++---
++ kiauh/core/menus/main_menu.py        | 43 +++++++++---------
++ kiauh/core/menus/remove_menu.py      | 11 ++---
++ kiauh/core/menus/repo_select_menu.py | 64 +++++++++++++++------------
++ kiauh/core/menus/settings_menu.py    | 65 ++++++++++++++++++++++++----
++ kiauh/core/menus/update_menu.py      | 56 ++++++++++++++----------
++ 8 files changed, 179 insertions(+), 109 deletions(-)
++
++diff --git a/kiauh/core/menus/advanced_menu.py b/kiauh/core/menus/advanced_menu.py
++index 3c41666..f23092b 100644
++--- a/kiauh/core/menus/advanced_menu.py
+++++ b/kiauh/core/menus/advanced_menu.py
++@@ -24,6 +24,7 @@ from components.klipper_firmware.menus.klipper_flash_menu import (
++ )
++ from components.moonraker import MOONRAKER_DIR
++ from components.moonraker.moonraker import Moonraker
+++from core.i18n import _
++ from core.menus import Option
++ from core.menus.base_menu import BaseMenu
++ from core.types.color import Color
++@@ -36,7 +37,7 @@ from utils.git_utils import rollback_repository
++ class AdvancedMenu(BaseMenu):
++     def __init__(self, previous_menu: Type[BaseMenu] | None = None) -> None:
++         super().__init__()
++-        self.title = "Advanced Menu"
+++        self.title = _("advanced_menu.title")
++         self.title_color = Color.YELLOW
++         self.previous_menu: Type[BaseMenu] | None = previous_menu
++ 
++@@ -59,16 +60,16 @@ class AdvancedMenu(BaseMenu):
++ 
++     def print_menu(self) -> None:
++         menu = textwrap.dedent(
++-            """
+++            f"""
++             ╟───────────────────────────┬───────────────────────────╢
++-            ║ Klipper Firmware:         │ Repository Rollback:      ║
++-            ║  1) [Build]               │  6) [Klipper]             ║
++-            ║  2) [Flash]               │  7) [Moonraker]           ║
++-            ║  3) [Build + Flash]       │                           ║
++-            ║  4) [Get MCU ID]          │ System:                   ║
++-            ║                           │  8) [Change hostname]     ║
++-            ║ Extra Dependencies:       │                           ║
++-            ║  5) [Input Shaper]        │                           ║
+++            ║ {_("advanced_menu.klipper_firmware"):<24} │ {_("advanced_menu.repository_rollback"):<24} ║
+++            ║  1) [{_("advanced_menu.build")}]               │  6) [Klipper]             ║
+++            ║  2) [{_("advanced_menu.flash")}]               │  7) [Moonraker]           ║
+++            ║  3) [{_("advanced_menu.build_flash")}]       │                           ║
+++            ║  4) [{_("advanced_menu.get_mcu_id")}]          │ System:                   ║
+++            ║                           │  8) [{_("advanced_menu.change_hostname")}]     ║
+++            ║ {_("advanced_menu.extra_deps"):<24} │                           ║
+++            ║  5) [{_("advanced_menu.input_shaper")}]        │                           ║
++             ╟───────────────────────────┴───────────────────────────╢
++             """
++         )[1:]
++diff --git a/kiauh/core/menus/backup_menu.py b/kiauh/core/menus/backup_menu.py
++index 713b013..7daa7ac 100644
++--- a/kiauh/core/menus/backup_menu.py
+++++ b/kiauh/core/menus/backup_menu.py
++@@ -23,6 +23,7 @@ from components.webui_client.client_utils import (
++ )
++ from components.webui_client.fluidd_data import FluiddData
++ from components.webui_client.mainsail_data import MainsailData
+++from core.i18n import _
++ from core.menus import Option
++ from core.menus.base_menu import BaseMenu
++ from core.services.backup_service import BackupService
++@@ -34,7 +35,7 @@ from core.types.color import Color
++ class BackupMenu(BaseMenu):
++     def __init__(self, previous_menu: Type[BaseMenu] | None = None) -> None:
++         super().__init__()
++-        self.title = "Backup Menu"
+++        self.title = _("backup_menu.title")
++         self.title_color = Color.GREEN
++         self.previous_menu: Type[BaseMenu] | None = previous_menu
++ 
++@@ -57,21 +58,19 @@ class BackupMenu(BaseMenu):
++         }
++ 
++     def print_menu(self) -> None:
++-        line1 = Color.apply(
++-            "INFO: Backups are located in '~/kiauh_backups'", Color.YELLOW
++-        )
+++        line1 = Color.apply(_("backup_menu.info"), Color.YELLOW)
++         menu = textwrap.dedent(
++             f"""
++             ╟───────────────────────────────────────────────────────╢
++             ║ {line1:^62} ║
++             ╟───────────────────────────┬───────────────────────────╢
++-            ║ Klipper & Moonraker API:  │ Client-Config:            ║
+++            ║ {_("backup_menu.klipper_moonraker_api"):<24} │ {_("install_menu.client_config"):<24} ║
++             ║  1) [Klipper]             │  7) [Mainsail-Config]     ║
++             ║  2) [Moonraker]           │  8) [Fluidd-Config]       ║
++-            ║  3) [Config Folder]       │                           ║
++-            ║  4) [Moonraker Database]  │ Touchscreen GUI:          ║
+++            ║  3) [{_("backup_menu.config_folder")}]       │                           ║
+++            ║  4) [{_("backup_menu.moonraker_database")}]  │ {_("backup_menu.touchscreen_gui"):<24} ║
++             ║                           │  9) [KlipperScreen]       ║
++-            ║ Webinterface:             │                           ║
+++            ║ {_("backup_menu.webinterface"):<24} │                           ║
++             ║  5) [Mainsail]            │                           ║
++             ║  6) [Fluidd]              │                           ║
++             ╟───────────────────────────┴───────────────────────────╢
++diff --git a/kiauh/core/menus/install_menu.py b/kiauh/core/menus/install_menu.py
++index d1577d4..0a8c44f 100644
++--- a/kiauh/core/menus/install_menu.py
+++++ b/kiauh/core/menus/install_menu.py
++@@ -22,6 +22,7 @@ from components.webui_client.client_setup import install_client
++ from components.webui_client.fluidd_data import FluiddData
++ from components.webui_client.mainsail_data import MainsailData
++ from components.webui_client.menus.client_install_menu import ClientInstallMenu
+++from core.i18n import _
++ from core.menus import Option
++ from core.menus.base_menu import BaseMenu
++ from core.settings.kiauh_settings import KiauhSettings
++@@ -33,7 +34,7 @@ from core.types.color import Color
++ class InstallMenu(BaseMenu):
++     def __init__(self, previous_menu: Type[BaseMenu] | None = None) -> None:
++         super().__init__()
++-        self.title = "Installation Menu"
+++        self.title = _("install_menu.title")
++         self.title_color = Color.GREEN
++         self.previous_menu: Type[BaseMenu] | None = previous_menu
++         self.klsvc = KlipperSetupService()
++@@ -58,17 +59,17 @@ class InstallMenu(BaseMenu):
++ 
++     def print_menu(self) -> None:
++         menu = textwrap.dedent(
++-            """
+++            f"""
++             ╟───────────────────────────┬───────────────────────────╢
++-            ║ Firmware & API:           │ Touchscreen GUI:          ║
+++            ║ {_("install_menu.firmware_api"):<24} │ {_("install_menu.touchscreen_gui"):<24} ║
++             ║  1) [Klipper]             │  7) [KlipperScreen]       ║
++             ║  2) [Moonraker]           │                           ║
++-            ║                           │ Webcam Streamer:          ║
++-            ║ Webinterface:             │  8) [Crowsnest]           ║
+++            ║                           │ {_("install_menu.webcam_streamer"):<24} ║
+++            ║ {_("install_menu.webinterface"):<24} │  8) [Crowsnest]           ║
++             ║  3) [Mainsail]            │                           ║
++             ║  4) [Fluidd]              │                           ║
++             ║                           │                           ║
++-            ║ Client-Config:            │                           ║
+++            ║ {_("install_menu.client_config"):<24} │                           ║
++             ║  5) [Mainsail-Config]     │                           ║
++             ║  6) [Fluidd-Config]       │                           ║
++             ╟───────────────────────────┴───────────────────────────╢
++diff --git a/kiauh/core/menus/main_menu.py b/kiauh/core/menus/main_menu.py
++index 2ed2cdb..cc7b907 100644
++--- a/kiauh/core/menus/main_menu.py
+++++ b/kiauh/core/menus/main_menu.py
++@@ -23,6 +23,7 @@ from components.webui_client.client_utils import (
++ )
++ from components.webui_client.fluidd_data import FluiddData
++ from components.webui_client.mainsail_data import MainsailData
+++from core.i18n import _
++ from core.logger import Logger
++ from core.menus import FooterType
++ from core.menus.advanced_menu import AdvancedMenu
++@@ -33,7 +34,7 @@ from core.menus.remove_menu import RemoveMenu
++ from core.menus.settings_menu import SettingsMenu
++ from core.menus.update_menu import UpdateMenu
++ from core.types.color import Color
++-from core.types.component_status import ComponentStatus, StatusMap, StatusText
+++from core.types.component_status import ComponentStatus, StatusMap
++ from extensions.extensions_menu import ExtensionsMenu
++ from utils.common import get_kiauh_version, trunc_string
++ 
++@@ -45,7 +46,7 @@ class MainMenu(BaseMenu):
++         super().__init__()
++ 
++         self.header: bool = True
++-        self.title = "Main Menu"
+++        self.title = _("main_menu.title")
++         self.title_color = Color.CYAN
++         self.footer_type: FooterType = FooterType.QUIT
++ 
++@@ -78,7 +79,7 @@ class MainMenu(BaseMenu):
++             setattr(
++                 self,
++                 f"{var}_status",
++-                Color.apply("Not installed", Color.RED),
+++                Color.apply(_("status.not_installed"), Color.RED),
++             )
++ 
++     def _fetch_status(self) -> None:
++@@ -94,9 +95,9 @@ class MainMenu(BaseMenu):
++     def _get_component_status(self, name: str, status_fn: Callable, *args) -> None:
++         status_data: ComponentStatus = status_fn(*args)
++         code: int = status_data.status
++-        status: StatusText = StatusMap[code]
++-        owner: str = trunc_string(status_data.owner, 23) if status_data.owner else '-'
++-        repo: str = trunc_string(status_data.repo, 23) if status_data.repo else '-'
+++        status: str = _(StatusMap[code])
+++        owner: str = trunc_string(status_data.owner, 23) if status_data.owner else "-"
+++        repo: str = trunc_string(status_data.repo, 23) if status_data.repo else "-"
++         instance_count: int = status_data.instances
++ 
++         count_txt: str = ""
++@@ -123,26 +124,26 @@ class MainMenu(BaseMenu):
++ 
++         footer1 = Color.apply(self.version, Color.CYAN)
++         link = Color.apply("https://git.io/JnmlX", Color.MAGENTA)
++-        footer2 = f"Changelog: {link}"
+++        footer2 = f"{_('main_menu.changelog')}: {link}"
++         pad1 = 32
++         pad2 = 26
++         menu = textwrap.dedent(
++             f"""
++             ╟──────────────────┬────────────────────────────────────╢
++-            ║  0) [Log-Upload] │   Klipper: {self.kl_status:<{pad1}} ║
++-            ║                  │     Owner: {self.kl_owner:<{pad1}} ║
++-            ║  1) [Install]    │      Repo: {self.kl_repo:<{pad1}} ║
++-            ║  2) [Update]     ├────────────────────────────────────╢
++-            ║  3) [Remove]     │ Moonraker: {self.mr_status:<{pad1}} ║
++-            ║  4) [Advanced]   │     Owner: {self.mr_owner:<{pad1}} ║
++-            ║  5) [Backup]     │      Repo: {self.mr_repo:<{pad1}} ║
+++            ║  0) [{_("main_menu.log_upload")}] │   {_("main_menu.klipper")}: {self.kl_status:<{pad1}} ║
+++            ║                  │     {_("common.owner")}: {self.kl_owner:<{pad1}} ║
+++            ║  1) [{_("main_menu.install")}]    │      {_("common.repo")}: {self.kl_repo:<{pad1}} ║
+++            ║  2) [{_("main_menu.update")}]     ├────────────────────────────────────╢
+++            ║  3) [{_("main_menu.remove")}]     │ {_("main_menu.moonraker")}: {self.mr_status:<{pad1}} ║
+++            ║  4) [{_("main_menu.advanced")}]   │     {_("common.owner")}: {self.mr_owner:<{pad1}} ║
+++            ║  5) [{_("main_menu.backup")}]     │      {_("common.repo")}: {self.mr_repo:<{pad1}} ║
++             ║                  ├────────────────────────────────────╢
++-            ║  S) [Settings]   │        Mainsail: {self.ms_status:<{pad2}} ║
++-            ║                  │          Fluidd: {self.fl_status:<{pad2}} ║
++-            ║ Community:       │   Client-Config: {self.cc_status:<{pad2}} ║
++-            ║  E) [Extensions] │                                    ║
++-            ║                  │   KlipperScreen: {self.ks_status:<{pad2}} ║
++-            ║                  │       Crowsnest: {self.cn_status:<{pad2}} ║
+++            ║  S) [{_("main_menu.settings")}]   │        {_("main_menu.mainsail")}: {self.ms_status:<{pad2}} ║
+++            ║                  │          {_("main_menu.fluidd")}: {self.fl_status:<{pad2}} ║
+++            ║ {_("main_menu.community")}:       │   {_("main_menu.client_config")}: {self.cc_status:<{pad2}} ║
+++            ║  E) [{_("main_menu.extensions")}] │                                    ║
+++            ║                  │   {_("main_menu.klipperscreen")}: {self.ks_status:<{pad2}} ║
+++            ║                  │       {_("main_menu.crowsnest")}: {self.cn_status:<{pad2}} ║
++             ╟──────────────────┼────────────────────────────────────╢
++             ║ {footer1:^25} │ {footer2:^43} ║
++             ╟──────────────────┴────────────────────────────────────╢
++@@ -151,7 +152,7 @@ class MainMenu(BaseMenu):
++         print(menu, end="")
++ 
++     def exit(self, **kwargs) -> None:
++-        Logger.print_ok("###### Happy printing!", False)
+++        Logger.print_ok(f"###### {_('common.happy_printing')}", False)
++         sys.exit(0)
++ 
++     def log_upload_menu(self, **kwargs) -> None:
++diff --git a/kiauh/core/menus/remove_menu.py b/kiauh/core/menus/remove_menu.py
++index d2354bb..52a230f 100644
++--- a/kiauh/core/menus/remove_menu.py
+++++ b/kiauh/core/menus/remove_menu.py
++@@ -20,6 +20,7 @@ from components.moonraker.menus.moonraker_remove_menu import (
++ from components.webui_client.fluidd_data import FluiddData
++ from components.webui_client.mainsail_data import MainsailData
++ from components.webui_client.menus.client_remove_menu import ClientRemoveMenu
+++from core.i18n import _
++ from core.menus import Option
++ from core.menus.base_menu import BaseMenu
++ from core.types.color import Color
++@@ -30,7 +31,7 @@ from core.types.color import Color
++ class RemoveMenu(BaseMenu):
++     def __init__(self, previous_menu: Type[BaseMenu] | None = None) -> None:
++         super().__init__()
++-        self.title = "Remove Menu"
+++        self.title = _("remove_menu.title")
++         self.title_color = Color.RED
++         self.previous_menu: Type[BaseMenu] | None = previous_menu
++ 
++@@ -51,14 +52,14 @@ class RemoveMenu(BaseMenu):
++ 
++     def print_menu(self) -> None:
++         menu = textwrap.dedent(
++-            """
+++            f"""
++             ╟───────────────────────────────────────────────────────╢
++-            ║ INFO: Configurations and/or any backups will be kept! ║
+++            ║ {_("remove_menu.info"):^62} ║
++             ╟───────────────────────────┬───────────────────────────╢
++-            ║ Firmware & API:           │ Touchscreen GUI:          ║
+++            ║ {_("install_menu.firmware_api"):<24} │ {_("install_menu.touchscreen_gui"):<24} ║
++             ║  1) [Klipper]             │  5) [KlipperScreen]       ║
++             ║  2) [Moonraker]           │                           ║
++-            ║                           │ Webcam Streamer:          ║
+++            ║                           │ {_("install_menu.webcam_streamer"):<24} ║
++             ║ Klipper Webinterface:     │  6) [Crowsnest]           ║
++             ║  3) [Mainsail]            │                           ║
++             ║  4) [Fluidd]              │                           ║
++diff --git a/kiauh/core/menus/repo_select_menu.py b/kiauh/core/menus/repo_select_menu.py
++index c93114e..c490431 100644
++--- a/kiauh/core/menus/repo_select_menu.py
+++++ b/kiauh/core/menus/repo_select_menu.py
++@@ -10,13 +10,14 @@ from __future__ import annotations
++ 
++ from typing import List, Literal, Type
++ 
++-from core.logger import Logger, DialogType
+++from core.i18n import _
+++from core.logger import DialogType, Logger
++ from core.menus import Option
++ from core.menus.base_menu import BaseMenu
++ from core.settings.kiauh_settings import KiauhSettings, Repository
++ from core.types.color import Color
++ from procedures.switch_repo import run_switch_repo_routine
++-from utils.input_utils import get_string_input, get_number_input, get_confirm
+++from utils.input_utils import get_confirm, get_number_input, get_string_input
++ 
++ 
++ # noinspection PyUnusedLocal
++@@ -32,15 +33,15 @@ class RepoSelectMenu(BaseMenu):
++         self.title_color = Color.CYAN
++         self.previous_menu = previous_menu
++         self.settings = KiauhSettings()
++-        self.input_label_txt = "Select repository"
+++        self.input_label_txt = _("repo_select_menu.select_repository")
++         self.name = name
++         self.repos = repos
++ 
++         if self.name == "klipper":
++-            self.title = "Klipper Repository Selection Menu"
+++            self.title = _("repo_select_menu.klipper_title")
++ 
++         elif self.name == "moonraker":
++-            self.title = "Moonraker Repository Selection Menu"
+++            self.title = _("repo_select_menu.moonraker_title")
++ 
++     def set_previous_menu(self, previous_menu: Type[BaseMenu] | None) -> None:
++         from core.menus.settings_menu import SettingsMenu
++@@ -62,7 +63,7 @@ class RepoSelectMenu(BaseMenu):
++ 
++     def print_menu(self) -> None:
++         menu = "╟───────────────────────────────────────────────────────╢\n"
++-        menu += "║ Available Repositories:                               ║\n"
+++        menu += f"║ {_('repo_select_menu.available_repos'):<52} ║\n"
++         menu += "╟───────────────────────────────────────────────────────╢\n"
++         for idx, repo in enumerate(self.repos, start=1):
++             url = f"● Repo: {repo.url.replace('.git', '')}"
++@@ -70,15 +71,15 @@ class RepoSelectMenu(BaseMenu):
++             menu += f"║ {idx}) {Color.apply(url, Color.CYAN):<59} ║\n"
++             menu += f"║    {Color.apply(branch, Color.CYAN):<59} ║\n"
++         menu += "╟───────────────────────────────────────────────────────╢\n"
++-        menu += "║ A) Add repository                                     ║\n"
++-        menu += "║ R) Remove repository                                  ║\n"
+++        menu += f"║ {_('repo_select_menu.add_repository'):<52} ║\n"
+++        menu += f"║ {_('repo_select_menu.remove_repository'):<52} ║\n"
++         menu += "╟───────────────────────────────────────────────────────╢\n"
++         print(menu, end="")
++ 
++     def select_repository(self, **kwargs) -> None:
++         repo: Repository = kwargs.get("opt_data")
++         Logger.print_status(
++-            f"Switching to {self.name.capitalize()}'s new source repository ..."
+++            _("repo_select_menu.switching", name=self.name.capitalize())
++         )
++         run_switch_repo_routine(self.name, repo.url, repo.branch)
++ 
++@@ -86,30 +87,33 @@ class RepoSelectMenu(BaseMenu):
++         while True:
++             Logger.print_dialog(
++                 DialogType.CUSTOM,
++-                custom_title="Enter the repository URL",
+++                custom_title=_("repo_select_menu.enter_url"),
++                 content=[
++-                    "NOTE: There is no input validation in place, "
++-                    "please check your input for correctness",
+++                    _("repo_select_menu.url_note"),
++                 ],
++             )
++-            url = get_string_input("Repository URL", allow_special_chars=True).strip()
+++            url = get_string_input(
+++                _("repo_select_menu.repo_url"), allow_special_chars=True
+++            ).strip()
++ 
++             Logger.print_dialog(
++                 DialogType.CUSTOM,
++-                custom_title="Enter the branch name",
++-                content=[ "Press Enter to use the default branch (master)." ],
+++                custom_title=_("repo_select_menu.enter_branch"),
+++                content=[_("repo_select_menu.press_enter_default")],
++                 center_content=False,
++             )
++-            branch = get_string_input("Branch", allow_special_chars=True, default="master").strip()
+++            branch = get_string_input(
+++                _("common.branch"), allow_special_chars=True, default="master"
+++            ).strip()
++             Logger.print_dialog(
++                 DialogType.CUSTOM,
++-                custom_title="Summary",
+++                custom_title=_("repo_select_menu.summary"),
++                 content=[
++-                    f"● URL:    {url}",
++-                    f"● Branch: {branch}",
+++                    f"● {_('repo_select_menu.repo_url')}:    {url}",
+++                    f"● {_('common.branch')}: {branch}",
++                 ],
++             )
++-            confirm = get_confirm("Save repository")
+++            confirm = get_confirm(_("repo_select_menu.save_repo"))
++             if confirm:
++                 repo = Repository(url, branch)
++                 if self.name == "klipper":
++@@ -120,28 +124,31 @@ class RepoSelectMenu(BaseMenu):
++                     self.settings.moonraker.repositories.append(repo)
++                     self.settings.save()
++                     self.repos = self.settings.moonraker.repositories
++-                Logger.print_ok("Repository added and saved.")
+++                Logger.print_ok(_("repo_select_menu.repo_added_saved"))
++ 
++                 # Refresh menu to show new repo immediately and update options
++                 self.set_options()
++                 self.run()
++                 break
++             else:
++-                Logger.print_info("Operation cancelled by user.")
+++                Logger.print_info(_("repo_select_menu.operation_cancelled"))
++                 break
++ 
++     def remove_repository(self, **kwargs) -> None:
++         repos = self.repos
++         if not repos:
++-            Logger.print_info("No repositories configured.")
+++            Logger.print_info(_("repo_select_menu.no_repos"))
++             return
++-        repo_lines = [f"{idx}) {repo.url} [{repo.branch}]" for idx, repo in enumerate(repos, start=1)]
+++        repo_lines = [
+++            f"{idx}) {repo.url} [{repo.branch}]"
+++            for idx, repo in enumerate(repos, start=1)
+++        ]
++         Logger.print_dialog(
++             DialogType.CUSTOM,
++-            custom_title="Available Repositories",
+++            custom_title=_("repo_select_menu.available_repos"),
++             content=[*repo_lines],
++         )
++-        idx = get_number_input("Select the repository to remove", 1, len(repos))
+++        idx = get_number_input(_("repo_select_menu.select_remove"), 1, len(repos))
++         removed = repos.pop(idx - 1)
++         if self.name == "klipper":
++             self.settings.klipper.repositories = repos
++@@ -151,7 +158,9 @@ class RepoSelectMenu(BaseMenu):
++             self.settings.moonraker.repositories = repos
++             self.settings.save()
++             self.repos = self.settings.moonraker.repositories
++-        Logger.print_ok(f"Removed repository: {removed.url} [{removed.branch}]")
+++        Logger.print_ok(
+++            _("repo_select_menu.repo_removed", url=removed.url, branch=removed.branch)
+++        )
++ 
++         # Refresh menu to show updated repo list and options
++         self.set_options()
++@@ -159,4 +168,5 @@ class RepoSelectMenu(BaseMenu):
++ 
++     def go_back(self, **kwargs) -> None:
++         from core.menus.settings_menu import SettingsMenu
+++
++         SettingsMenu().run()
++diff --git a/kiauh/core/menus/settings_menu.py b/kiauh/core/menus/settings_menu.py
++index 42ea05e..f5607d4 100644
++--- a/kiauh/core/menus/settings_menu.py
+++++ b/kiauh/core/menus/settings_menu.py
++@@ -13,6 +13,7 @@ from typing import Type
++ 
++ from components.klipper.klipper_utils import get_klipper_status
++ from components.moonraker.utils.utils import get_moonraker_status
+++from core.i18n import _, get_available_languages
++ from core.logger import DialogType, Logger
++ from core.menus import Option
++ from core.menus.base_menu import BaseMenu
++@@ -20,6 +21,7 @@ from core.menus.repo_select_menu import RepoSelectMenu
++ from core.settings.kiauh_settings import KiauhSettings
++ from core.types.color import Color
++ from core.types.component_status import ComponentStatus
+++from utils.input_utils import get_selection_input
++ 
++ 
++ # noinspection PyUnusedLocal
++@@ -27,15 +29,16 @@ from core.types.component_status import ComponentStatus
++ class SettingsMenu(BaseMenu):
++     def __init__(self, previous_menu: Type[BaseMenu] | None = None) -> None:
++         super().__init__()
++-        self.title = "Settings Menu"
+++        self.title = _("settings_menu.title")
++         self.title_color = Color.CYAN
++         self.previous_menu: Type[BaseMenu] | None = previous_menu
++ 
++         self.mainsail_unstable: bool | None = None
++         self.fluidd_unstable: bool | None = None
++         self.auto_backups_enabled: bool | None = None
+++        self.current_language: str = "en"
++ 
++-        na: str = "Not available!"
+++        na: str = _("common.not_available")
++         self.kl_repo_url: str = Color.apply(na, Color.RED)
++         self.kl_branch: str = Color.apply(na, Color.RED)
++         self.mr_repo_url: str = Color.apply(na, Color.RED)
++@@ -55,6 +58,7 @@ class SettingsMenu(BaseMenu):
++             "3": Option(method=self.toggle_mainsail_release),
++             "4": Option(method=self.toggle_fluidd_release),
++             "5": Option(method=self.toggle_backup_before_update),
+++            "6": Option(method=self.select_language),
++         }
++ 
++     def print_menu(self) -> None:
++@@ -64,25 +68,33 @@ class SettingsMenu(BaseMenu):
++         o1 = checked if self.mainsail_unstable else unchecked
++         o2 = checked if self.fluidd_unstable else unchecked
++         o3 = checked if self.auto_backups_enabled else unchecked
+++
+++        lang_map = get_available_languages()
+++        lang_display = lang_map.get(self.current_language, self.current_language)
+++        lang_color = Color.apply(lang_display, Color.CYAN)
+++
++         menu = textwrap.dedent(
++             f"""
++             ╟───────────────────────────────────────────────────────╢
++-            ║ 1) Switch Klipper source repository                   ║
+++            ║ 1) {_("settings_menu.switch_klipper_repo"):<52} ║
++             ║    ● Current repository:                              ║
++             ║    └► Repo: {self.kl_repo_url:50} ║
++             ║    └► Branch: {self.kl_branch:48} ║
++             ╟───────────────────────────────────────────────────────╢
++-            ║ 2) Switch Moonraker source repository                 ║
+++            ║ 2) {_("settings_menu.switch_moonraker_repo"):<52} ║
++             ║    ● Current repository:                              ║
++             ║    └► Repo: {self.mr_repo_url:50} ║
++             ║    └► Branch: {self.mr_branch:48} ║
++             ╟───────────────────────────────────────────────────────╢
++-            ║ Install unstable releases:                            ║
+++            ║ {_("settings_menu.install_unstable"):<53} ║
++             ║ 3) {o1} Mainsail                                       ║
++             ║ 4) {o2} Fluidd                                         ║
++             ╟───────────────────────────────────────────────────────╢
++-            ║ Auto-Backup:                                          ║
++-            ║ 5) {o3} Backup before update                           ║
+++            ║ {_("settings_menu.auto_backup"):<53} ║
+++            ║ 5) {o3} {_("settings_menu.backup_before_update"):<47} ║
+++            ╟───────────────────────────────────────────────────────╢
+++            ║ {_("settings_menu.language"):<53} ║
+++            ║ 6)   Language: {lang_color:<48} ║
++             ╟───────────────────────────────────────────────────────╢
++             """
++         )[1:]
++@@ -93,6 +105,7 @@ class SettingsMenu(BaseMenu):
++         self.auto_backups_enabled = self.settings.kiauh.backup_before_update
++         self.mainsail_unstable = self.settings.mainsail.unstable_releases
++         self.fluidd_unstable = self.settings.fluidd.unstable_releases
+++        self.current_language = self.settings.kiauh.language or "en"
++ 
++         klipper_status: ComponentStatus = get_klipper_status()
++         moonraker_status: ComponentStatus = get_moonraker_status()
++@@ -112,7 +125,7 @@ class SettingsMenu(BaseMenu):
++     def _warn_no_repos(self, name: str) -> None:
++         Logger.print_dialog(
++             DialogType.WARNING,
++-            [f"No {name} repositories configured in kiauh.cfg!"],
+++            [_("repo_select_menu.no_repos_warn", name=name)],
++             center_content=True,
++         )
++ 
++@@ -138,3 +151,39 @@ class SettingsMenu(BaseMenu):
++         self.auto_backups_enabled = not self.auto_backups_enabled
++         self.settings.kiauh.backup_before_update = self.auto_backups_enabled
++         self.settings.save()
+++
+++    def select_language(self, **kwargs) -> None:
+++        lang_map = get_available_languages()
+++        if not lang_map:
+++            Logger.print_info("No language files available.")
+++            return
+++
+++        lang_codes = list(lang_map.keys())
+++        lang_lines = []
+++        for i, code in enumerate(lang_codes, start=1):
+++            marker = "*" if code == self.current_language else " "
+++            lang_lines.append(f" [{marker}] {i}) {lang_map[code]} ({code})")
+++
+++        Logger.print_dialog(
+++            DialogType.CUSTOM,
+++            custom_title=_("settings_menu.select_language"),
+++            content=lang_lines,
+++            center_content=False,
+++        )
+++
+++        options = {str(i + 1): code for i, code in enumerate(lang_codes)}
+++        choice = get_selection_input(
+++            _("common.perform_action"),
+++            options,
+++        )
+++
+++        selected_lang = options.get(choice)
+++        if selected_lang is None:
+++            return
+++
+++        self.current_language = selected_lang
+++        self.settings.kiauh.language = selected_lang
+++        self.settings.save()
+++        Logger.print_ok(
+++            _("settings_menu.language_changed", name=lang_map[selected_lang])
+++        )
++diff --git a/kiauh/core/menus/update_menu.py b/kiauh/core/menus/update_menu.py
++index 3bb7661..0f2eb5e 100644
++--- a/kiauh/core/menus/update_menu.py
+++++ b/kiauh/core/menus/update_menu.py
++@@ -32,6 +32,7 @@ from components.webui_client.client_utils import (
++ )
++ from components.webui_client.fluidd_data import FluiddData
++ from components.webui_client.mainsail_data import MainsailData
+++from core.i18n import _
++ from core.logger import DialogType, Logger
++ from core.menus import Option
++ from core.menus.base_menu import BaseMenu
++@@ -50,10 +51,10 @@ from utils.sys_utils import (
++ class UpdateMenu(BaseMenu):
++     def __init__(self, previous_menu: Type[BaseMenu] | None = None) -> None:
++         super().__init__()
++-        self.loading_msg = "Loading update menu, please wait"
+++        self.loading_msg = _("update_menu.loading")
++         self.is_loading(True)
++ 
++-        self.title = "Update Menu"
+++        self.title = _("update_menu.title")
++         self.title_color = Color.GREEN
++         self.previous_menu: Type[BaseMenu] | None = previous_menu
++ 
++@@ -145,43 +146,44 @@ class UpdateMenu(BaseMenu):
++         }
++ 
++     def print_menu(self) -> None:
++-        sysupgrades: str = "No upgrades available."
+++        sysupgrades: str = _("update_menu.no_upgrades")
++         padding = 29
++         if self.package_count > 0:
++             sysupgrades = Color.apply(
++-                f"{self.package_count} upgrades available!", Color.GREEN
+++                _("update_menu.upgrades_available", count=self.package_count),
+++                Color.GREEN,
++             )
++             padding = 38
++ 
++         menu = textwrap.dedent(
++             f"""
++             ╟───────────────────────┬───────────────┬───────────────╢
++-            ║  a) Update all        │               │               ║
++-            ║                       │ Current:      │ Latest:       ║
++-            ║ Klipper & API:        ├───────────────┼───────────────╢
+++            ║  {_("update_menu.update_all"):<20} │               │               ║
+++            ║                       │ {_("update_menu.current"):<12} │ {_("update_menu.latest"):<12} ║
+++            ║ {_("update_menu.klipper_api"):<22} ├───────────────┼───────────────╢
++             ║  1) Klipper           │ {self.klipper_local:<22} │ {self.klipper_remote:<22} ║
++             ║  2) Moonraker         │ {self.moonraker_local:<22} │ {self.moonraker_remote:<22} ║
++             ║                       │               │               ║
++-            ║ Webinterface:         ├───────────────┼───────────────╢
+++            ║ {_("install_menu.webinterface"):<22} ├───────────────┼───────────────╢
++             ║  3) Mainsail          │ {self.mainsail_local:<22} │ {self.mainsail_remote:<22} ║
++             ║  4) Fluidd            │ {self.fluidd_local:<22} │ {self.fluidd_remote:<22} ║
++             ║                       │               │               ║
++-            ║ Client-Config:        ├───────────────┼───────────────╢
+++            ║ {_("install_menu.client_config"):<22} ├───────────────┼───────────────╢
++             ║  5) Mainsail-Config   │ {self.mainsail_config_local:<22} │ {self.mainsail_config_remote:<22} ║
++             ║  6) Fluidd-Config     │ {self.fluidd_config_local:<22} │ {self.fluidd_config_remote:<22} ║
++             ║                       │               │               ║
++-            ║ Other:                ├───────────────┼───────────────╢
+++            ║ {_("update_menu.other"):<22} ├───────────────┼───────────────╢
++             ║  7) KlipperScreen     │ {self.klipperscreen_local:<22} │ {self.klipperscreen_remote:<22} ║
++             ║  8) Crowsnest         │ {self.crowsnest_local:<22} │ {self.crowsnest_remote:<22} ║
++             ║                       ├───────────────┴───────────────╢
++-            ║  9) System            │ {sysupgrades:^{padding}} ║
+++            ║  9) {_("update_menu.system"):<18} │ {sysupgrades:^{padding}} ║
++             ╟───────────────────────┴───────────────────────────────╢
++             """
++         )[1:]
++         print(menu, end="")
++ 
++     def update_all(self, **kwargs) -> None:
++-        Logger.print_status("Updating all components ...")
+++        Logger.print_status(_("update_menu.updating_all"))
++         self.update_klipper()
++         self.update_moonraker()
++         self.update_mainsail()
++@@ -267,7 +269,7 @@ class UpdateMenu(BaseMenu):
++         elif local_version != remote_version:
++             color = Color.YELLOW
++ 
++-        return str(Color.apply(local_version or '-', color))
+++        return str(Color.apply(local_version or "-", color))
++ 
++     def _set_status_data(self, name: str, status_fn: Callable, *args) -> None:
++         comp_status: ComponentStatus = status_fn(*args)
++@@ -307,10 +309,10 @@ class UpdateMenu(BaseMenu):
++         is_update_available = self._is_update_available(name)
++ 
++         if not is_installed:
++-            Logger.print_info(f"{display_name} is not installed! Skipped ...")
+++            Logger.print_info(_("update_menu.not_installed", name=display_name))
++             return
++         elif not is_update_available:
++-            Logger.print_info(f"{display_name} is already up to date! Skipped ...")
+++            Logger.print_info(_("update_menu.up_to_date", name=display_name))
++             return
++ 
++         update_fn(*args)
++@@ -324,13 +326,19 @@ class UpdateMenu(BaseMenu):
++         elif name == "moonraker":
++             self._set_status_data("moonraker", get_moonraker_status)
++         elif name == "mainsail":
++-            self._set_status_data("mainsail", get_client_status, self.mainsail_data, True)
+++            self._set_status_data(
+++                "mainsail", get_client_status, self.mainsail_data, True
+++            )
++         elif name == "mainsail_config":
++-            self._set_status_data("mainsail_config", get_client_config_status, self.mainsail_data)
+++            self._set_status_data(
+++                "mainsail_config", get_client_config_status, self.mainsail_data
+++            )
++         elif name == "fluidd":
++             self._set_status_data("fluidd", get_client_status, self.fluidd_data, True)
++         elif name == "fluidd_config":
++-            self._set_status_data("fluidd_config", get_client_config_status, self.fluidd_data)
+++            self._set_status_data(
+++                "fluidd_config", get_client_config_status, self.fluidd_data
+++            )
++         elif name == "klipperscreen":
++             self._set_status_data("klipperscreen", get_klipperscreen_status)
++         elif name == "crowsnest":
++@@ -338,7 +346,7 @@ class UpdateMenu(BaseMenu):
++ 
++     def _run_system_updates(self) -> None:
++         if not self.packages:
++-            Logger.print_info("No system upgrades available!")
+++            Logger.print_info(_("update_menu.no_system_upgrades"))
++             return
++ 
++         try:
++@@ -346,17 +354,17 @@ class UpdateMenu(BaseMenu):
++ 
++             Logger.print_dialog(
++                 DialogType.CUSTOM,
++-                ["The following packages will be upgraded:", "\n\n", pkgs],
++-                custom_title="UPGRADABLE SYSTEM UPDATES",
+++                [_("update_menu.following_packages"), "\n\n", pkgs],
+++                custom_title=_("update_menu.upgradable_title"),
++             )
++ 
++-            if not get_confirm("Upgrade packages?"):
+++            if not get_confirm(_("update_menu.upgrade_packages_confirm")):
++                 return
++ 
++-            Logger.print_status("Upgrading system packages ...")
+++            Logger.print_status(_("update_menu.upgrading_packages"))
++ 
++             upgrade_system_packages(self.packages)
++             self._fetch_system_package_update_status()
++         except Exception as e:
++-            Logger.print_error(f"Error upgrading system packages:\n{e}")
+++            Logger.print_error(_("update_menu.error_upgrading") + f"\n{e}")
++             raise
++-- 
++2.52.0.windows.1
++
+diff --git a/patches/0006-feat-i18n-convert-extension-menu-and-system-procedur.patch b/patches/0006-feat-i18n-convert-extension-menu-and-system-procedur.patch
+new file mode 100644
+index 0000000..e3908c9
+--- /dev/null
++++ b/patches/0006-feat-i18n-convert-extension-menu-and-system-procedur.patch
+@@ -0,0 +1,225 @@
++From f1debe50b1863baa6f6c6cd40c1638eef79630e6 Mon Sep 17 00:00:00 2001
++From: Maoweicao <Maoweicao@users.noreply.github.com>
++Date: Mon, 4 May 2026 18:26:32 +0800
++Subject: [PATCH 6/7] feat(i18n): convert extension menu and system procedures
++ to use translations
++
++- ExtensionsMenu: translate 'Available Extensions' label
++- System procedures (hostname change): translate all dialogs, prompts, status messages
++- Switch repo procedure: translate status messages for stop/restore/restart instances
++---
++ kiauh/extensions/extensions_menu.py |  3 ++-
++ kiauh/procedures/switch_repo.py     | 24 +++++++++--------
++ kiauh/procedures/system.py          | 42 +++++++++++++----------------
++ 3 files changed, 33 insertions(+), 36 deletions(-)
++
++diff --git a/kiauh/extensions/extensions_menu.py b/kiauh/extensions/extensions_menu.py
++index c32f610..9d2ac06 100644
++--- a/kiauh/extensions/extensions_menu.py
+++++ b/kiauh/extensions/extensions_menu.py
++@@ -15,6 +15,7 @@ import textwrap
++ from pathlib import Path
++ from typing import Dict, List, Type
++ 
+++from core.i18n import _
++ from core.logger import Logger
++ from core.menus import Option
++ from core.menus.base_menu import BaseMenu
++@@ -110,7 +111,7 @@ class ExtensionsMenu(BaseMenu):
++         ExtensionSubmenu(kwargs.get("opt_data"), self.__class__).run()
++ 
++     def print_menu(self) -> None:
++-        line1 = Color.apply("Available Extensions:", Color.YELLOW)
+++        line1 = Color.apply(_("repo_select_menu.available_repos"), Color.YELLOW)
++         menu = textwrap.dedent(
++             f"""
++             ╟───────────────────────────────────────────────────────╢
++diff --git a/kiauh/procedures/switch_repo.py b/kiauh/procedures/switch_repo.py
++index 05b33b1..518cac2 100644
++--- a/kiauh/procedures/switch_repo.py
+++++ b/kiauh/procedures/switch_repo.py
++@@ -28,6 +28,7 @@ from components.moonraker.moonraker import Moonraker
++ from components.moonraker.services.moonraker_setup_service import (
++     install_moonraker_packages,
++ )
+++from core.i18n import _
++ from core.instance_manager.instance_manager import InstanceManager
++ from core.logger import Logger
++ from core.services.backup_service import BackupService
++@@ -49,17 +50,15 @@ def run_switch_repo_routine(
++     name: Literal["klipper", "moonraker"], repo_url: str, branch: str
++ ) -> None:
++     if name not in ("klipper", "moonraker"):
++-        raise ValueError(
++-            f"Invalid name: {name!r}. Must be 'klipper' or 'moonraker'."
++-        )
++-        
+++        raise ValueError(f"Invalid name: {name!r}. Must be 'klipper' or 'moonraker'.")
+++
++     repo_dir: Path = KLIPPER_DIR if name == "klipper" else MOONRAKER_DIR
++     env_dir: Path = KLIPPER_ENV_DIR if name == "klipper" else MOONRAKER_ENV_DIR
++     req_file = KLIPPER_REQ_FILE if name == "klipper" else MOONRAKER_REQ_FILE
++     _type = Klipper if name == "klipper" else Moonraker
++ 
++     # step 1: stop all instances
++-    Logger.print_status(f"Stopping all {_type.__name__} instances ...")
+++    Logger.print_status(_("component.stop_instances", name=_type.__name__))
++     instances = get_instances(_type)
++     InstanceManager.stop_all(instances)
++ 
++@@ -94,14 +93,14 @@ def run_switch_repo_routine(
++             install_moonraker_packages()
++ 
++         # step 6: recreate python virtualenv
++-        Logger.print_status(f"Recreating {_type.__name__} virtualenv ...")
+++        Logger.print_status(_("component.recreating_venv", name=_type.__name__))
++ 
++         settings = KiauhSettings()
++         if name == "klipper":
++             use_python_binary = settings.klipper.use_python_binary
++         elif name == "moonraker":
++             use_python_binary = settings.moonraker.use_python_binary
++-            
+++
++         if not create_python_venv(
++             env_dir, force=True, use_python_binary=use_python_binary
++         ):
++@@ -109,13 +108,16 @@ def run_switch_repo_routine(
++         else:
++             install_python_requirements(env_dir, req_file)
++ 
++-        Logger.print_ok(f"Switched to {repo_url} at branch {branch}!")
+++        Logger.print_ok(
+++            _("repo_select_menu.switching", name=f"{repo_url} at branch {branch}")
+++        )
++ 
++     except (GitException, VenvCreationFailedException) as e:
++         # if something goes wrong during cloning or recreating the virtualenv,
++         # we restore the backup of the repo and env
++-        Logger.print_error(f"Error during repository switch: {e}", start="\n")
++-        Logger.print_status(f"Restoring last backup of {_type.__name__} ...")
+++        Logger.print_error(_("component.error_retry"), start="\n")
+++        Logger.print_error(f"Error during repository switch: {e}")
+++        Logger.print_status(_("component.restore_backup", name=_type.__name__))
++         _restore_repo_backup(
++             _type.__name__,
++             env_dir,
++@@ -131,7 +133,7 @@ def run_switch_repo_routine(
++     except Exception as e:
++         raise RepoSwitchFailedException(e)
++ 
++-    Logger.print_status(f"Restarting all {_type.__name__} instances ...")
+++    Logger.print_status(_("component.restart_instances", name=_type.__name__))
++     InstanceManager.start_all(instances)
++ 
++ 
++diff --git a/kiauh/procedures/system.py b/kiauh/procedures/system.py
++index 218e913..f933f14 100644
++--- a/kiauh/procedures/system.py
+++++ b/kiauh/procedures/system.py
++@@ -10,6 +10,7 @@
++ from pathlib import Path
++ from subprocess import PIPE, CalledProcessError, run
++ 
+++from core.i18n import _
++ from core.logger import DialogType, Logger
++ from utils.common import check_install_dependencies, get_current_date
++ from utils.fs_utils import check_file_exist
++@@ -17,16 +18,10 @@ from utils.input_utils import get_confirm, get_string_input
++ 
++ 
++ def change_system_hostname() -> None:
++-    """
++-    Procedure to change the system hostname.
++-    :return:
++-    """
++-
++     Logger.print_dialog(
++         DialogType.CUSTOM,
++         [
++-            "Changing the hostname of this system allows you to access an installed "
++-            "webinterface by simply typing the hostname like this in the browser:",
+++            _("component.hostname_desc"),
++             "\n\n",
++             "http://<hostname>.local",
++             "\n\n",
++@@ -34,15 +29,15 @@ def change_system_hostname() -> None:
++             "installed webinterface by typing 'http://my-printer.local' in the "
++             "browser.",
++         ],
++-        custom_title="CHANGE SYSTEM HOSTNAME",
+++        custom_title=_("component.hostname_title"),
++     )
++-    if not get_confirm("Do you want to change the hostname?", default_choice=False):
+++    if not get_confirm(_("component.hostname_confirm"), default_choice=False):
++         return
++ 
++     Logger.print_dialog(
++         DialogType.CUSTOM,
++         [
++-            "Allowed characters: a-z, 0-9 and '-'",
+++            _("component.hostname_rules"),
++             "The name must not contain the following:",
++             "\n\n",
++             "● Any special characters",
++@@ -50,21 +45,22 @@ def change_system_hostname() -> None:
++         ],
++     )
++     hostname = get_string_input(
++-        "Enter the new hostname",
+++        _("component.hostname_enter"),
++         regex=r"^[a-z0-9]+([a-z0-9-]*[a-z0-9])?$",
++     )
++-    if not get_confirm(f"Change the hostname to '{hostname}'?", default_choice=False):
++-        Logger.print_info("Aborting hostname change ...")
+++    if not get_confirm(
+++        _("component.hostname_change_confirm", name=hostname), default_choice=False
+++    ):
+++        Logger.print_info(_("component.hostname_abort"))
++         return
++ 
++     try:
++-        Logger.print_status("Changing hostname ...")
+++        Logger.print_status(_("component.hostname_changing"))
++ 
++-        Logger.print_status("Checking for dependencies ...")
+++        Logger.print_status(_("component.hostname_checking_deps"))
++         check_install_dependencies({"avahi-daemon"}, include_global=False)
++ 
++-        # create or backup hosts file
++-        Logger.print_status("Creating backup of hosts file ...")
+++        Logger.print_status(_("component.hostname_backup_hosts"))
++         hosts_file = Path("/etc/hosts")
++         if not check_file_exist(hosts_file, True):
++             cmd = ["sudo", "touch", hosts_file.as_posix()]
++@@ -82,22 +78,20 @@ def change_system_hostname() -> None:
++             run(cmd, stderr=PIPE, check=True)
++         Logger.print_ok()
++ 
++-        # call hostnamectl set-hostname <hostname>
++-        Logger.print_status(f"Setting hostname to '{hostname}' ...")
+++        Logger.print_status(_("component.hostname_setting", name=hostname))
++         cmd = ["sudo", "hostnamectl", "set-hostname", hostname]
++         run(cmd, stderr=PIPE, check=True)
++         Logger.print_ok()
++ 
++-        # add hostname to hosts file at the end of the file
++-        Logger.print_status("Writing new hostname to /etc/hosts ...")
+++        Logger.print_status(_("component.hostname_writing"))
++         stdin = f"127.0.0.1       {hostname}\n"
++         cmd = ["sudo", "tee", "-a", hosts_file.as_posix()]
++         run(cmd, input=stdin.encode(), stderr=PIPE, stdout=PIPE, check=True)
++         Logger.print_ok()
++ 
++-        Logger.print_ok("New hostname successfully configured!")
++-        Logger.print_ok("Remember to reboot for the changes to take effect!\n")
+++        Logger.print_ok(_("component.hostname_success"))
+++        Logger.print_ok(_("component.hostname_reboot"))
++ 
++     except CalledProcessError as e:
++-        Logger.print_error(f"Error during change hostname procedure: {e}")
+++        Logger.print_error(_("component.hostname_error", error=str(e)))
++         return
++-- 
++2.52.0.windows.1
++
+diff --git a/patches/0007-fix-i18n-remove-duplicate-closing-brace-from-en.json.patch b/patches/0007-fix-i18n-remove-duplicate-closing-brace-from-en.json.patch
+new file mode 100644
+index 0000000..9ed078d
+--- /dev/null
++++ b/patches/0007-fix-i18n-remove-duplicate-closing-brace-from-en.json.patch
+@@ -0,0 +1,23 @@
++From 2093fc122d8a77fe94db28f4751eea38dbbad467 Mon Sep 17 00:00:00 2001
++From: Maoweicao <Maoweicao@users.noreply.github.com>
++Date: Mon, 4 May 2026 18:42:30 +0800
++Subject: [PATCH 7/7] fix(i18n): remove duplicate closing brace from en.json
++
++The edit operation left an extra '}' at the root level, causing
++JSONDecodeError and silent fallback to raw translation keys.
++---
++ kiauh/core/i18n/locales/en.json | 1 -
++ 1 file changed, 1 deletion(-)
++
++diff --git a/kiauh/core/i18n/locales/en.json b/kiauh/core/i18n/locales/en.json
++index 743c1fe..e5e9376 100644
++--- a/kiauh/core/i18n/locales/en.json
+++++ b/kiauh/core/i18n/locales/en.json
++@@ -309,4 +309,3 @@
++         "component.hostname_error": "Error during change hostname procedure: {error}"
++     }
++ }
++-}
++-- 
++2.52.0.windows.1
++
+-- 
+2.52.0.windows.1
+

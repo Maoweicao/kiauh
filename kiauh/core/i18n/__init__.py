@@ -9,11 +9,14 @@
 from __future__ import annotations
 
 import locale
+import re
 import unicodedata
 
 from .translation import TranslationManager
 
 _i18n = TranslationManager()
+
+_ANSI_RE = re.compile(r"\033\[[0-9;]*m")
 
 
 def _(key: str, *args, **kwargs) -> str:
@@ -54,26 +57,20 @@ def get_available_languages() -> dict[str, str]:
 
 
 def display_width(text: str) -> int:
-    """Return the terminal display width of a string.
-
-    CJK characters (Chinese, Japanese, Korean) take 2 columns,
-    ASCII/Latin characters take 1 column.
-    """
+    """Return terminal display width, skipping ANSI codes, handling CJK."""
+    clean = _ANSI_RE.sub("", str(text))
     width = 0
-    for ch in text:
-        if isinstance(ch, str) and len(ch) == 1:
-            ea = unicodedata.east_asian_width(ch)
-            if ea in ("W", "F"):
-                width += 2
-            else:
-                width += 1
+    for ch in clean:
+        ea = unicodedata.east_asian_width(ch)
+        if ea in ("W", "F"):
+            width += 2
         else:
-            width += len(ch)
+            width += 1
     return width
 
 
 def wc_ljust(text: str, width: int) -> str:
-    """Left-justify text within given display width, accounting for CJK."""
+    """Left-justify within display width, CJK-aware."""
     dw = display_width(text)
     if dw >= width:
         return text
@@ -81,7 +78,7 @@ def wc_ljust(text: str, width: int) -> str:
 
 
 def wc_center(text: str, width: int, fillchar: str = " ") -> str:
-    """Center text within given display width, accounting for CJK."""
+    """Center within display width, CJK-aware."""
     dw = display_width(text)
     if dw >= width:
         return text

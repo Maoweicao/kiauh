@@ -23,7 +23,7 @@ from components.webui_client.client_utils import (
 )
 from components.webui_client.fluidd_data import FluiddData
 from components.webui_client.mainsail_data import MainsailData
-from core.i18n import _, wc_ljust
+from core.i18n import _, wc_center, wc_ljust
 from core.logger import Logger
 from core.menus import FooterType
 from core.menus.advanced_menu import AdvancedMenu
@@ -124,11 +124,10 @@ class MainMenu(BaseMenu):
 
         footer1 = Color.apply(self.version, Color.CYAN)
         link = Color.apply("https://git.io/JnmlX", Color.MAGENTA)
-        footer2 = f"{_('main_menu.changelog')}: {link}"
+        footer2_raw = f"{_('main_menu.changelog')}: {link}"
         pad1 = 32
         pad2 = 26
 
-        # Build right-column cells with CJK-aware left-justify
         kl_label = _("main_menu.klipper")
         mr_label = _("main_menu.moonraker")
         ms_label = _("main_menu.mainsail")
@@ -157,7 +156,7 @@ class MainMenu(BaseMenu):
             ║                  │   {wc_ljust(f"{ks_label}: {self.ks_status}", pad2)} ║
             ║                  │       {wc_ljust(f"{cn_label}: {self.cn_status}", pad2)} ║
             ╟──────────────────┼────────────────────────────────────╢
-            ║ {footer1:^25} │ {footer2:^43} ║
+            ║ {wc_center(footer1, 25)} │ {wc_center(footer2_raw, 43)} ║
             ╟──────────────────┴────────────────────────────────────╢
             """
         )[1:]

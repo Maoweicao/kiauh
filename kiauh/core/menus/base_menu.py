@@ -17,7 +17,7 @@ from abc import abstractmethod
 from enum import Enum
 from typing import Dict, Type
 
-from core.i18n import _, display_width, wc_center
+from core.i18n import _, wc_center
 from core.logger import Logger
 from core.menus import FooterType, Option
 from core.services.message_service import MessageService
@@ -32,7 +32,7 @@ def clear() -> None:
 
 def print_header() -> None:
     color = Color.CYAN
-    count = 62 - display_width(str(color)) - display_width(str(Color.RST))
+    count = 62 - len(str(color)) - len(str(Color.RST))
     line1 = wc_center(f" [ {_('header.title')} ] ", count, "~")
     line2 = wc_center(_("header.subtitle"), count)
     line3 = wc_center("", count, "~")
@@ -49,13 +49,12 @@ def print_header() -> None:
 
 
 def print_quit_footer() -> None:
-    text = _("common.quit")
     color = Color.RED
-    count = 62 - display_width(str(color)) - display_width(str(Color.RST))
-    centered = wc_center(text, count)
+    count = 62 - len(str(color)) - len(str(Color.RST))
+    text = wc_center(_("common.quit"), count)
     footer = textwrap.dedent(
         f"""
-        ║ {color}{centered}{Color.RST} ║
+        ║ {color}{text}{Color.RST} ║
         ╚═══════════════════════════════════════════════════════╝
         """
     )[1:]
@@ -63,13 +62,12 @@ def print_quit_footer() -> None:
 
 
 def print_back_footer() -> None:
-    text = _("common.back")
     color = Color.GREEN
-    count = 62 - display_width(str(color)) - display_width(str(Color.RST))
-    centered = wc_center(text, count)
+    count = 62 - len(str(color)) - len(str(Color.RST))
+    text = wc_center(_("common.back"), count)
     footer = textwrap.dedent(
         f"""
-        ║ {color}{centered}{Color.RST} ║
+        ║ {color}{text}{Color.RST} ║
         ╚═══════════════════════════════════════════════════════╝
         """
     )[1:]
@@ -77,16 +75,14 @@ def print_back_footer() -> None:
 
 
 def print_back_help_footer() -> None:
-    text1 = _("common.back")
-    text2 = _("common.help")
     color1 = Color.GREEN
     color2 = Color.YELLOW
-    count = 34 - display_width(str(color1)) - display_width(str(Color.RST))
-    centered1 = wc_center(text1, count)
-    centered2 = wc_center(text2, count)
+    count = 34 - len(str(color1)) - len(str(Color.RST))
+    text1 = wc_center(_("common.back"), count)
+    text2 = wc_center(_("common.help"), count)
     footer = textwrap.dedent(
         f"""
-        ║ {color1}{centered1}{Color.RST} │ {color2}{centered2}{Color.RST} ║
+        ║ {color1}{text1}{Color.RST} │ {color2}{text2}{Color.RST} ║
         ╚═══════════════════════════╧═══════════════════════════╝
         """
     )[1:]
@@ -187,9 +183,7 @@ class BaseMenu(metaclass=PostInitCaller):
             self.spinner = None
 
     def __print_menu_title(self) -> None:
-        count = (
-            62 - display_width(str(self.title_color)) - display_width(str(Color.RST))
-        )
+        count = 62 - len(str(self.title_color)) - len(str(Color.RST))
         menu_title = "╔═══════════════════════════════════════════════════════╗\n"
         if self.title:
             title_raw = (
@@ -197,11 +191,8 @@ class BaseMenu(metaclass=PostInitCaller):
                 if self.title_style == MenuTitleStyle.STYLED
                 else self.title
             )
-            line = wc_center(
-                title_raw,
-                count,
-                "~" if self.title_style == MenuTitleStyle.STYLED else " ",
-            )
+            fill = "~" if self.title_style == MenuTitleStyle.STYLED else " "
+            line = wc_center(title_raw, count, fill)
             menu_title += f"║ {Color.apply(line, self.title_color)} ║\n"
         print(menu_title, end="")
 
@@ -228,19 +219,15 @@ class BaseMenu(metaclass=PostInitCaller):
         self.__print_footer()
 
     def run(self) -> None:
-        """Start the menu lifecycle. When this function returns, the lifecycle of the menu ends."""
         try:
             self.__display_menu()
             option = get_selection_input(self.input_label_txt, self.options)
             selected_option: Option = self.options.get(option)
-
             selected_option.method(
                 opt_index=selected_option.opt_index,
                 opt_data=selected_option.opt_data,
             )
-
             self.run()
-
         except Exception as e:
             Logger.print_error(
                 f"{_('common.unexpected_error')}\n{e}\n{traceback.format_exc()}"
