@@ -1,0 +1,17 @@
+{
+  "metadata": {
+    "index": 15,
+    "module": "service_status_extension",
+    "maintained_by": "KIAUH",
+    "display_name": "Service Status",
+    "description": [
+      "Check the running status of Klipper services.",
+      "- View Klipper service status",
+      "- View Moonraker service status",
+      "- View Mainsail/Fluidd web interface status",
+      "\n\n",
+      "Note: This extension only checks service status and does not install or remove any software."
+    ],
+    "updates": false
+  }
+}

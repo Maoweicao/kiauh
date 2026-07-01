@@ -95,7 +95,7 @@ def create_python_venv(
     target: Path,
     force: bool = False,
     allow_access_to_system_site_packages: bool = False,
-    use_python_binary: str | None = None
+    use_python_binary: str | None = None,
 ) -> bool:
     """
     Create a python 3 virtualenv at the provided target destination.
@@ -116,7 +116,7 @@ def create_python_venv(
     ) if allow_access_to_system_site_packages else None
 
     n = 2
-    while(n > 0):
+    while n > 0:
         if not target.exists():
             try:
                 run(cmd, check=True)
@@ -459,6 +459,23 @@ def cmd_sysctl_manage(action: SysCtlManageAction) -> None:
         log = f"Failed to run {action}: {e.stderr.decode()}"
         Logger.print_error(log)
         raise
+
+
+def is_service_active(name: str) -> bool:
+    """
+    Check if a systemd service is currently active (running).
+    :param name: the service name (e.g., 'klipper', 'moonraker')
+    :return: True if the service is active, False otherwise
+    """
+    try:
+        result = run(
+            ["systemctl", "is-active", name],
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0 and result.stdout.strip() == "active"
+    except (CalledProcessError, FileNotFoundError):
+        return False
 
 
 def unit_file_exists(
